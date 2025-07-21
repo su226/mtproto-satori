@@ -1,0 +1,25 @@
+[project]
+name = "mtproto-satori"
+version = "0.1.0"
+description = "A Satori implementation based on MTProto."
+readme = "README.md"
+authors = [
+    { name = "su226", email = "thesu226@outlook.com" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "pyrofork>=2.3.68",
+    "satori-python-server>=0.16.4",
+    "tgcrypto-pyrofork>=1.2.7",
+]
+
+[project.scripts]
+mtproto-satori = "mtproto_satori.__main__:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.ruff]
+line-length = 99
+indent-width = 2

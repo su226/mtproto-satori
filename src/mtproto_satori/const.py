@@ -1,0 +1,2 @@
+PLATFORM = "telegram"
+ADAPTER = "mtproto"
