@@ -59,6 +59,7 @@ class MTProtoAdapter(Adapter):
     self.bot_token = bot_token
     self.client: Client | None = None
     self.me: Me | None = None
+    self.media_groups = dict[str, tuple[datetime, list[Message]]]()
     self.route(Api.LOGIN_GET)(self._route_login_get)
     self.route(Api.USER_GET)(self._route_user_get)
     self.route(Api.MESSAGE_CREATE)(self._route_message_create)
@@ -75,6 +76,25 @@ class MTProtoAdapter(Adapter):
 
   async def _on_message(self, client: Client, message: Message) -> None:
     assert self.me
+    if message.media_group_id:
+      if message.media_group_id in self.media_groups:
+        _, messages = self.media_groups[message.media_group_id]
+      else:
+        messages = []
+      now = datetime.now()
+      messages.append(message)
+      self.media_groups[message.media_group_id] = (now, messages)
+      await asyncio.sleep(1.2)
+      time, _ = self.media_groups[message.media_group_id]
+      if time != now:
+        return
+      del self.media_groups[message.media_group_id]
+      messages.sort(key=lambda update: update.id)
+      message = messages[0]
+      contents = [parse_message(self.me.tg.id, message) for message in messages]
+      content = MessageObject(contents[0].id, "".join(message.content for message in contents))
+    else:
+      content = parse_message(self.me.tg.id, message)
     guild, channel = parse_guild_channel(self.me.tg.id, message.chat, message.message_thread_id)
     event = Event(
       "message-created",
@@ -82,7 +102,7 @@ class MTProtoAdapter(Adapter):
       self.me.satori,
       channel=channel,
       guild=guild,
-      message=parse_message(self.me.tg.id, message),
+      message=content,
       user=parse_user(self.me.tg.id, message.from_user),
     )
     await self.queue.put(event)
