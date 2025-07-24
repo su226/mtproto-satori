@@ -1,9 +1,9 @@
 import asyncio
 from collections.abc import AsyncIterator
-from datetime import datetime, timedelta
+from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal, NotRequired, TypedDict, cast
-from dataclasses import dataclass
 
 from launart import Launart
 from launart.status import Phase
@@ -11,10 +11,25 @@ from pyrogram.client import Client
 from pyrogram.file_id import FileId
 from pyrogram.types import CallbackQuery, Message
 from pyrogram.types import User as TGUser
-from satori.model import ButtonInteraction, Event, Login, LoginStatus, MessageObject, User
+from satori.model import (
+  ButtonInteraction,
+  Channel,
+  ChannelType,
+  Event,
+  Login,
+  LoginStatus,
+  MessageObject,
+  User,
+)
 from satori.server import Adapter, Api
 from satori.server.model import Request
-from satori.server.route import MessageOpParam, MessageParam, MessageUpdateParam, UserGetParam
+from satori.server.route import (
+  MessageOpParam,
+  MessageParam,
+  MessageUpdateParam,
+  UserChannelCreateParam,
+  UserGetParam,
+)
 from starlette.responses import Response, StreamingResponse
 
 from mtproto_satori.const import ADAPTER, PLATFORM
@@ -62,6 +77,7 @@ class MTProtoAdapter(Adapter):
     self.media_groups = dict[str, tuple[datetime, list[Message]]]()
     self.route(Api.LOGIN_GET)(self._route_login_get)
     self.route(Api.USER_GET)(self._route_user_get)
+    self.route(Api.USER_CHANNEL_CREATE)(self._route_user_channel_create)
     self.route(Api.MESSAGE_CREATE)(self._route_message_create)
     self.route(Api.MESSAGE_GET)(self._route_message_get)
     self.route(Api.MESSAGE_UPDATE)(self._route_message_update)
@@ -138,6 +154,9 @@ class MTProtoAdapter(Adapter):
       raise ValueError("Client not started")
     user = cast(TGUser, await self.client.get_users(request.params["user_id"]))
     return parse_user(self.me.tg.id, user)
+
+  async def _route_user_channel_create(self, request: Request[UserChannelCreateParam]) -> Channel:
+    return Channel(request.params["user_id"], ChannelType.DIRECT)
 
   async def _route_message_create(self, request: Request[MessageParam]) -> list[MessageObject]:
     if not self.client or not self.me:
