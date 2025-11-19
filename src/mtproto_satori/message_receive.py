@@ -25,7 +25,7 @@ from satori.element import (
 from satori.model import MessageObject
 
 from mtproto_satori.const import PLATFORM
-from mtproto_satori.user import parse_user
+from mtproto_satori.user import parse_guild_channel, parse_user
 
 
 @dataclass
@@ -170,4 +170,7 @@ def parse_message(self_id: int, message: Message) -> MessageObject:
   elif message.audio:
     elements.append(Audio(f"internal:{PLATFORM}/{self_id}/{message.audio.file_id}", message.audio.file_name))
 
-  return MessageObject.from_elements(str(message.id), elements)
+  guild, channel = parse_guild_channel(self_id, message.chat, message.message_thread_id)
+  user = parse_user(self_id, message.from_user)
+
+  return MessageObject.from_elements(str(message.id), elements, channel, guild, None, user, message.date, message.edit_date)
