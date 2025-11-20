@@ -1,11 +1,13 @@
 from dataclasses import dataclass
 from typing import Any, Literal, cast
 
-from pyrogram.enums import ChatType, MessageEntityType
-from pyrogram.types import Message, MessageEntity, User
+from pyrogram.enums import MessageEntityType
+from pyrogram.types import Message, MessageEntity
+from pyrogram.types import User as TGUser
 from satori.element import (
   At,
   Audio,
+  Author,
   Bold,
   Br,
   Code,
@@ -22,7 +24,7 @@ from satori.element import (
   Underline,
   Video,
 )
-from satori.model import MessageObject
+from satori.model import MessageObject, User
 
 from mtproto_satori.const import PLATFORM
 from mtproto_satori.user import parse_guild_channel, parse_sender_chat, parse_user
@@ -49,7 +51,7 @@ class Status:
   spoiler: bool = False
   mention: bool = False
   link: str | None = None
-  user: User | None = None
+  user: TGUser | None = None
 
 
 def parse_text(text: str, entities: list[MessageEntity]) -> list[Element]:
@@ -125,26 +127,15 @@ def parse_text(text: str, entities: list[MessageEntity]) -> list[Element]:
   return elements
 
 
-@dataclass
-class ParseResult:
-  elements: list[Element]
-  quote: MessageObject | None
-
-
-def parse_message(me: User, message: Message) -> MessageObject:
+def parse_message(me: TGUser, message: Message) -> MessageObject:
   elements = []
 
   if message.reply_to_message and not (message.is_topic_message and message.reply_to_message.forum_topic_created):
     quote_message = parse_message(me, message.reply_to_message)
-    quote_user = parse_user(me.id, message.reply_to_message.from_user)
+    quote_user = quote_message.user
+    assert quote_user
     quote_elements = list[str | Element]()
-    quote_elements.append(Custom("user", {
-      "id": quote_user.id,
-      "name": quote_user.name,
-      "nick": quote_user.nick,
-      "avatar": quote_user.avatar,
-      "is-bot": quote_user.is_bot,
-    }))
+    quote_elements.append(Author(quote_user.id, quote_user.name, quote_user.avatar))
     quote_elements.extend(quote_message.content)
     elements.append(Quote(str(message.reply_to_message.id), content=quote_elements))
 
