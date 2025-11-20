@@ -16,6 +16,25 @@ def parse_user(self_id: int, user: TGUser) -> User:
   )
 
 
+def parse_sender_chat(self_id: int, chat: Chat) -> User:
+  chat_id = str(chat.id)
+  if chat.first_name:
+    chat_title = f"{chat.first_name} {chat.last_name}" if chat.last_name else chat.first_name
+  elif chat.title:
+    chat_title = chat.title
+  elif chat.username:
+    chat_title = chat.username
+  else:
+    chat_title = chat_id
+  return User(
+    chat_id,
+    chat.username,
+    chat_title,
+    f"internal:{PLATFORM}/{self_id}/{chat.photo.big_file_id}" if chat.photo else None,
+    False,
+  )
+
+
 def parse_guild_channel(
   self_id: int, chat: Chat, thread_id: int | None = None
 ) -> tuple[Guild | None, Channel]:

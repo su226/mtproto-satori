@@ -25,7 +25,7 @@ from satori.element import (
 from satori.model import MessageObject
 
 from mtproto_satori.const import PLATFORM
-from mtproto_satori.user import parse_guild_channel, parse_user
+from mtproto_satori.user import parse_guild_channel, parse_sender_chat, parse_user
 
 
 @dataclass
@@ -131,12 +131,12 @@ class ParseResult:
   quote: MessageObject | None
 
 
-def parse_message(self_id: int, message: Message) -> MessageObject:
+def parse_message(me: User, message: Message) -> MessageObject:
   elements = []
 
   if message.reply_to_message and not (message.is_topic_message and message.reply_to_message.forum_topic_created):
-    quote_message = parse_message(self_id, message.reply_to_message)
-    quote_user = parse_user(self_id, message.reply_to_message.from_user)
+    quote_message = parse_message(me, message.reply_to_message)
+    quote_user = parse_user(me.id, message.reply_to_message.from_user)
     quote_elements = list[str | Element]()
     quote_elements.append(Custom("user", {
       "id": quote_user.id,
@@ -156,21 +156,26 @@ def parse_message(self_id: int, message: Message) -> MessageObject:
   if message.location:
     elements.append(Custom("location", {"lat": message.location.latitude, "lon": message.location.longitude}))
   elif message.photo:
-    elements.append(Image(f"internal:{PLATFORM}/{self_id}/{message.photo.file_id}"))
+    elements.append(Image(f"internal:{PLATFORM}/{me.id}/{message.photo.file_id}"))
   elif message.sticker:
-    elements.append(Image(f"internal:{PLATFORM}/{self_id}/{message.sticker.file_id}", message.sticker.file_name))
+    elements.append(Image(f"internal:{PLATFORM}/{me.id}/{message.sticker.file_id}", message.sticker.file_name))
   elif message.voice:
-    elements.append(Audio(f"internal:{PLATFORM}/{self_id}/{message.voice.file_id}"))
+    elements.append(Audio(f"internal:{PLATFORM}/{me.id}/{message.voice.file_id}"))
   elif message.animation:
-    elements.append(Image(f"internal:{PLATFORM}/{self_id}/{message.animation.file_id}", message.animation.file_name))
+    elements.append(Image(f"internal:{PLATFORM}/{me.id}/{message.animation.file_id}", message.animation.file_name))
   elif message.video:
-    elements.append(Video(f"internal:{PLATFORM}/{self_id}/{message.video.file_id}", message.video.file_name))
+    elements.append(Video(f"internal:{PLATFORM}/{me.id}/{message.video.file_id}", message.video.file_name))
   elif message.document:
-    elements.append(File(f"internal:{PLATFORM}/{self_id}/{message.document.file_id}", message.document.file_name))
+    elements.append(File(f"internal:{PLATFORM}/{me.id}/{message.document.file_id}", message.document.file_name))
   elif message.audio:
-    elements.append(Audio(f"internal:{PLATFORM}/{self_id}/{message.audio.file_id}", message.audio.file_name))
+    elements.append(Audio(f"internal:{PLATFORM}/{me.id}/{message.audio.file_id}", message.audio.file_name))
 
-  guild, channel = parse_guild_channel(self_id, message.chat, message.message_thread_id)
-  user = parse_user(self_id, message.from_user)
+  guild, channel = parse_guild_channel(me.id, message.chat, message.message_thread_id)
+  if message.sender_chat:
+    user = parse_sender_chat(me.id, message.sender_chat)
+  elif message.outgoing and not message.from_user:
+    user = parse_user(me.id, me)
+  else:
+    user = parse_user(me.id, message.from_user)
 
   return MessageObject.from_elements(str(message.id), elements, channel, guild, None, user, message.date, message.edit_date)

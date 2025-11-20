@@ -35,7 +35,7 @@ from starlette.responses import Response, StreamingResponse
 from mtproto_satori.const import ADAPTER, PLATFORM
 from mtproto_satori.message_receive import parse_message
 from mtproto_satori.message_send import send_message, update_message
-from mtproto_satori.user import parse_guild_channel, parse_user
+from mtproto_satori.user import parse_user
 
 
 class Proxy(TypedDict):
@@ -107,37 +107,41 @@ class MTProtoAdapter(Adapter):
       del self.media_groups[message.media_group_id]
       messages.sort(key=lambda update: update.id)
       message = messages[0]
-      contents = [parse_message(self.me.tg.id, message) for message in messages]
-      content = MessageObject(contents[0].id, "".join(message.content for message in contents))
+      contents = [parse_message(self.me.tg, message) for message in messages]
+      content = MessageObject(
+        contents[0].id,
+        "".join(message.content for message in contents),
+        contents[0].channel,
+        contents[0].guild,
+        None,
+        contents[0].user,
+        contents[0].created_at,
+        contents[0].updated_at,
+      )
     else:
-      content = parse_message(self.me.tg.id, message)
-    guild, channel = parse_guild_channel(self.me.tg.id, message.chat, message.message_thread_id)
+      content = parse_message(self.me.tg, message)
     event = Event(
       "message-created",
       message.date,
       self.me.satori,
-      channel=channel,
-      guild=guild,
+      channel=content.channel,
+      guild=content.guild,
       message=content,
-      user=parse_user(self.me.tg.id, message.from_user),
+      user=content.user,
     )
     await self.queue.put(event)
 
   async def _on_callback_query(self, client: Client, callback: CallbackQuery) -> None:
     assert self.me
-    guild, channel = parse_guild_channel(
-      self.me.tg.id,
-      callback.message.chat,
-      callback.message.message_thread_id,
-    )
+    message = parse_message(self.me.tg, callback.message)
     event = Event(
       "interaction/button",
       datetime.now(),
       self.me.satori,
       button=ButtonInteraction(cast(str, callback.data)),
-      channel=channel,
-      guild=guild,
-      message=parse_message(self.me.tg.id, callback.message),
+      channel=message.channel,
+      guild=message.guild,
+      message=message,
       user=parse_user(self.me.tg.id, callback.message.from_user),
     )
     await self.queue.put(event)
@@ -163,7 +167,7 @@ class MTProtoAdapter(Adapter):
       raise ValueError("Client not started")
     return await send_message(
       self.client,
-      self.me.tg.id,
+      self.me.tg,
       int(request.params["channel_id"]),
       request.params["content"],
     )
@@ -175,7 +179,7 @@ class MTProtoAdapter(Adapter):
       int(request.params["channel_id"]),
       int(request.params["message_id"]),
     )
-    return parse_message(self.me.tg.id, cast(Message, message))
+    return parse_message(self.me.tg, cast(Message, message))
 
   async def _route_message_update(self, request: Request[MessageUpdateParam]) -> None:
     if not self.client or not self.me:

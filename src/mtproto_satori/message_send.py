@@ -20,6 +20,7 @@ from pyrogram.types import (
   InputMediaPhoto,
   InputMediaVideo,
   Message,
+  User,
 )
 from satori.model import MessageObject
 from satori.parser import Element, escape, parse
@@ -181,15 +182,15 @@ class MessageEncoder:
 
 
 class SendMessageEncoder(MessageEncoder):
-  def __init__(self, client: Client, self_id: int, channel_id: int) -> None:
+  def __init__(self, client: Client, me: User, channel_id: int) -> None:
     super().__init__()
     self.result = list[MessageObject]()
     self.client = client
-    self.self_id = self_id
+    self.me = me
     self.channel_id = channel_id
 
   def add_result(self, result: Message) -> None:
-    self.result.append(parse_message(self.self_id, result))
+    self.result.append(parse_message(self.me, result))
 
   async def flush(self) -> None:
     if not (self.content or self.asset):
@@ -286,12 +287,12 @@ class SendMessageEncoder(MessageEncoder):
 
 async def send_message(
   client: Client,
-  self_id: int,
+  me: User,
   channel_id: int,
   message: str,
 ) -> list[MessageObject]:
   elements = parse(message)
-  encoder = SendMessageEncoder(client, self_id, channel_id)
+  encoder = SendMessageEncoder(client, me, channel_id)
   await encoder.render(elements)
   await encoder.flush()
   return encoder.result
