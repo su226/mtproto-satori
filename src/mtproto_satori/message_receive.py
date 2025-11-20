@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Any, Literal, cast
 
-from pyrogram.enums import MessageEntityType
+from pyrogram.enums import ChatType, MessageEntityType
 from pyrogram.types import Message, MessageEntity, User
 from satori.element import (
   At,
@@ -173,9 +173,13 @@ def parse_message(me: User, message: Message) -> MessageObject:
   guild, channel = parse_guild_channel(me.id, message.chat, message.message_thread_id)
   if message.sender_chat:
     user = parse_sender_chat(me.id, message.sender_chat)
-  elif message.outgoing and not message.from_user:
+  elif message.from_user:
+    user = parse_user(me.id, message.from_user)
+  elif message.outgoing:
+    # 私聊发送的消息没有 from_user
     user = parse_user(me.id, me)
   else:
-    user = parse_user(me.id, message.from_user)
+    # 频道消息既没有 sender_chat 也没有 from_user
+    user = parse_sender_chat(me.id, message.chat)
 
   return MessageObject.from_elements(str(message.id), elements, channel, guild, None, user, message.date, message.edit_date)
