@@ -35,20 +35,77 @@ Start with `uv run mtproto-satori`.
 ## Features
 
 ### API
+
+- [ ] channel.get
+- [ ] channel.list
+- [ ] channel.create
+- [ ] channel.update
+- [ ] channel.delete
+- [ ] channel.mute
+- [ ] friend.list
+- [ ] friend.delete
+- [ ] friend.approve
+- [ ] guild.get
+- [ ] guild.list
+- [ ] guild.approve
+- [ ] guild.member.get
+- [ ] guild.member.list
+- [ ] guild.member.kick
+- [ ] guild.member.mute
+- [ ] guild.member.approve
+- [ ] guild.member.role.set
+- [ ] guild.member.role.unset
+- [ ] guild.role.list
+- [ ] guild.role.create
+- [ ] guild.role.update
+- [ ] guild.role.delete
 - [x] login.get
-- [x] user.get
-- [x] user.channel.create
 - [x] message.create
 - [x] message.get
 - [x] message.update
+- [ ] message.list
+- [ ] reaction.create
+- [ ] reaction.delete
+- [ ] reaction.clear
+- [ ] reaction.list
+- [x] user.channel.create
+- [x] user.get
 
 ### Event
-- [x] message-created
+
+- [ ] channel-added
+- [ ] channel-updated
+- [ ] channel-removed
+- [ ] guild-emoji-added
+- [ ] guild-emoji-updated
+- [ ] guild-emoji-deleted
+- [ ] friend-request
+- [ ] guild-added
+- [ ] guild-updated
+- [ ] guild-removed
+- [ ] guild-request
+- [ ] guild-member-added
+- [ ] guild-member-updated
+- [ ] guild-member-removed
+- [ ] guild-member-request
+- [ ] guild-role-created
+- [ ] guild-role-updated
+- [ ] guild-role-deleted
 - [x] interaction/button
+- [ ] interaction/command
+- [x] login-added
+- [ ] login-removed
+- [ ] login-updated
+- [x] message-created
+- [ ] message-updated
+- [ ] message-deleted
+- [ ] reaction-added
+- [ ] reaction-removed
 
 ### Element
 
 #### Standard
+
 - [x] at
 - [ ] sharp (Not supported in Telegram)
 - [x] emoji
@@ -73,7 +130,8 @@ Start with `uv run mtproto-satori`.
 - [x] button
 
 #### Non-standard, but appeared in [@satorijs/adapter-telegram](https://www.npmjs.com/package/@satorijs/adapter-telegram)
-- [x] image
-- [x] figure
-- [x] pre / code-block
+
 - [x] button-group
+- [x] figure
+- [x] image
+- [x] pre / code-block

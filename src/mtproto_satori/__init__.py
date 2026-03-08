@@ -91,7 +91,8 @@ class MTProtoAdapter(Adapter):
     return {"preparing", "blocking", "cleanup"}
 
   async def _on_message(self, client: Client, message: Message) -> None:
-    assert self.me
+    if not self.me:
+      raise ValueError("Client is not fully initalized.")
     if message.media_group_id:
       if message.media_group_id in self.media_groups:
         _, messages = self.media_groups[message.media_group_id]
@@ -134,7 +135,8 @@ class MTProtoAdapter(Adapter):
     await self.queue.put(event)
 
   async def _on_callback_query(self, client: Client, callback: CallbackQuery) -> None:
-    assert self.me
+    if not self.me:
+      raise ValueError("Client is not fully initalized.")
     message = parse_message(self.me.tg, callback.message)
     event = Event(
       "interaction/button",
@@ -156,8 +158,8 @@ class MTProtoAdapter(Adapter):
   async def _route_login_get(self, request: Request[Any]) -> Login:
     if not self.client or not self.me:
       raise ValueError("Client not started")
-    await self._update_me()
-    return self.me.satori
+    me = await self._update_me()
+    return me.satori
 
   async def _route_user_get(self, request: Request[UserOpParam]) -> User:
     if not self.client or not self.me:
@@ -224,7 +226,14 @@ class MTProtoAdapter(Adapter):
 
     async with self.stage("blocking"):
       await self.client.start()
-      await self._update_me()
+      me = await self._update_me()
+      await self.queue.put(
+        Event(
+          "login-added",
+          datetime.now(),
+          me.satori,
+        )
+      )
       await manager.status.wait_for_sigexit()
 
     async with self.stage("cleanup"):
@@ -249,10 +258,11 @@ class MTProtoAdapter(Adapter):
       return Response("Not found", 404)
     return StreamingResponse(self.client.get_file(file_id))
 
-  async def _update_me(self) -> None:
+  async def _update_me(self) -> Me:
     assert self.client
     user = await self.client.get_me()
     self.me = Me(user, Login(0, LoginStatus.ONLINE, ADAPTER, PLATFORM, parse_user(user.id, user)))
+    return self.me
 
   async def get_logins(self) -> list[Login]:
     if not self.me:
