@@ -72,17 +72,26 @@ InputMediaNotAnimation = InputMediaAudio | InputMediaDocument | InputMediaPhoto 
 
 
 class MessageEncoder:
-  def __init__(self, emojis: dict[int, Sticker]) -> None:
+  def __init__(self, emojis: dict[int, Sticker], users: dict[int | str, User]) -> None:
     self.content = ""
     self.asset = list[Element]()
     self.mode: Literal["figure", "default"] = "default"
     self.reply = ""
     self.rows = list[list[InlineKeyboardButton]]()
     self.emojis = emojis
+    self.users = users
 
   def _get_emoji_name(self, emoji_id: int) -> str | None:
     if emoji := self.emojis.get(emoji_id):
       return emoji.emoji
+    return None
+
+  def _get_user_name(self, user_id: int | str) -> str | None:
+    if user := self.users.get(user_id):
+      if user.username:
+        return f"@{user.username}"
+      if full_name := user.full_name:
+        return full_name
     return None
 
   async def visit(self, element: Element) -> None:
@@ -120,13 +129,21 @@ class MessageEncoder:
       await self.render(element.children)
       self.content += "</code></pre>"
     elif element.type == "at":
-      if "id" in element.attrs:
-        id = element.attrs["id"]
-        name = element.attrs.get("name", id)
-        self.content += f'<a href="tg://user?id={id}">@{escape(name)}</a>'
+      if id := element.attrs.get("id"):
+        try:
+          id = int(id)
+        except ValueError:
+          # ID 代表用户名，始终获取用户 ID，用户名不存在就瞎填一个 ID
+          username = id.removeprefix("@")
+          id = user.id if (user := self.users.get(username)) else f"@{username}"
+          display = element.attrs.get("name") or f"@{username}"
+          self.content += f'<a href="tg://user?id={id}">{escape(display)}</a>'
+        else:
+          # ID 代表用户 ID，使用 name 指定的名字，没有再获取
+          display = element.attrs.get("name") or self._get_user_name(id) or "User"
+          self.content += f'<a href="tg://user?id={id}">{escape(display)}</a>'
     elif element.type == "emoji":
-      if "id" in element.attrs:
-        id = element.attrs["id"]
+      if id := element.attrs.get("id"):
         name = element.attrs.get("name") or self._get_emoji_name(int(id)) or "😀"
         self.content += f'<tg-emoji emoji-id="{id}">{escape(name)}</tg-emoji>'
     elif element.type in ("img", "image", "audio", "video", "file"):
@@ -200,8 +217,9 @@ class SendMessageEncoder(MessageEncoder):
     channel_id: int,
     thread_id: int | None,
     emojis: dict[int, Sticker],
+    users: dict[int | str, User],
   ) -> None:
-    super().__init__(emojis)
+    super().__init__(emojis, users)
     self.result = list[MessageObject]()
     self.client = client
     self.me = me
@@ -322,17 +340,42 @@ def extract_emojis_without_name(element: Element | Iterable[Element]) -> set[int
   return set(chain.from_iterable(extract_emojis_without_name(element) for element in element))
 
 
-async def fetch_emojis(client: Client, emojis: Iterable[int]) -> dict[int, Sticker]:
-  emojis = list(emojis)
+async def fetch_emojis(client: Client, emojis: set[int]) -> dict[int, Sticker]:
   return (
     {
       sticker.custom_emoji_id: sticker
-      for sticker in await client.get_custom_emoji_stickers(emojis)
+      for sticker in await client.get_custom_emoji_stickers(list(emojis))
       if sticker.custom_emoji_id
     }
     if emojis
     else {}
   )
+
+
+def extract_users_without_id_or_name(element: Element | Iterable[Element]) -> set[int | str]:
+  if isinstance(element, Element):
+    if element.type == "at":
+      if user_id := element.attrs.get("id"):
+        try:
+          user_id = int(user_id)
+        except ValueError:
+          # 当 ID 代表用户名时，获取所有用户
+          return {user_id.removeprefix("@")}
+        else:
+          # 当 ID 代表用户 ID 时，只获取未指定 name 的用户
+          return {user_id} if not element.attrs.get("name") else set()
+      return set()
+    element = element.children
+  return set(chain.from_iterable(extract_users_without_id_or_name(element) for element in element))
+
+
+async def fetch_users(client: Client, users: set[int | str]) -> dict[int | str, User]:
+  if users:
+    infos = cast(list[User], await client.get_users(users))
+    results: dict[int | str, User] = {info.id: info for info in infos}
+    results.update((info.username, info) for info in infos if info.username)
+    return results
+  return {}
 
 
 async def send_message(
@@ -344,7 +387,8 @@ async def send_message(
 ) -> list[MessageObject]:
   elements = parse(message)
   emojis = await fetch_emojis(client, extract_emojis_without_name(elements))
-  encoder = SendMessageEncoder(client, me, channel_id, thread_id, emojis)
+  users = await fetch_users(client, extract_users_without_id_or_name(elements))
+  encoder = SendMessageEncoder(client, me, channel_id, thread_id, emojis, users)
   await encoder.render(elements)
   await encoder.flush()
   return encoder.result
@@ -358,7 +402,8 @@ async def update_message(
 ) -> None:
   elements = parse(message)
   emojis = await fetch_emojis(client, extract_emojis_without_name(elements))
-  encoder = MessageEncoder(emojis)
+  users = await fetch_users(client, extract_users_without_id_or_name(elements))
+  encoder = MessageEncoder(emojis, users)
   await encoder.render(elements)
   await client.edit_message_text(
     channel_id,
