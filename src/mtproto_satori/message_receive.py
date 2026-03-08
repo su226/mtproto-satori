@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from typing import Any, Literal, cast
 
 from pyrogram.enums import MessageEntityType
-from pyrogram.types import Message, MessageEntity, Sticker
+from pyrogram.types import Message, MessageEntity
 from pyrogram.types import User as TGUser
 from satori.element import (
   At,
@@ -56,9 +56,7 @@ class Status:
   emoji: int | None = None
 
 
-def parse_text(
-  text: str, entities: list[MessageEntity], emojis: dict[int, Sticker]
-) -> list[Element]:
+def parse_text(text: str, entities: list[MessageEntity]) -> list[Element]:
   breakpoints = list[Breakpoint]()
   for entity in entities or []:
     if entity.type in (
@@ -114,10 +112,7 @@ def parse_text(
         new_element.children.append(element)
         element = new_element
       if status.emoji:
-        name = "😀"
-        if (sticker := emojis.get(status.emoji)) and sticker.emoji:
-          name = sticker.emoji
-        element = Emoji(str(status.emoji), name=name)
+        element = Emoji(str(status.emoji), name=content)
       if content == "\n":
         element = Br()
       elements.append(element)
@@ -164,13 +159,13 @@ def parse_message_sender(me: TGUser, message: Message) -> User:
   raise ValueError("Message has no sender.")
 
 
-def parse_message(me: TGUser, message: Message, emojis: dict[int, Sticker]) -> MessageObject:
+def parse_message(me: TGUser, message: Message) -> MessageObject:
   elements = []
 
   if message.reply_to_message and not (
     message.topic_message and message.reply_to_message.forum_topic_created
   ):
-    quote_message = parse_message(me, message.reply_to_message, emojis)
+    quote_message = parse_message(me, message.reply_to_message)
     quote_user = parse_message_sender(me, message.reply_to_message)
     quote_elements = list[str | Element]()
     quote_elements.append(Author(quote_user.id, quote_user.name, quote_user.avatar))
@@ -181,7 +176,6 @@ def parse_message(me: TGUser, message: Message, emojis: dict[int, Sticker]) -> M
     parse_text(
       message.text or message.caption or "",
       message.entities or message.caption_entities or [],
-      emojis,
     )
   )
 

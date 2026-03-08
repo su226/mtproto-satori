@@ -33,7 +33,6 @@ from satori.server.route import (
 from starlette.responses import Response, StreamingResponse
 
 from mtproto_satori.const import ADAPTER, PLATFORM
-from mtproto_satori.emoji import extract_emojis_from_tg_message, fetch_emojis
 from mtproto_satori.message_receive import parse_message
 from mtproto_satori.message_send import send_message, update_message
 from mtproto_satori.user import parse_user
@@ -108,8 +107,7 @@ class MTProtoAdapter(Adapter):
       del self.media_groups[message.media_group_id]
       messages.sort(key=lambda update: update.id)
       message = messages[0]
-      emojis = await fetch_emojis(client, extract_emojis_from_tg_message(messages))
-      contents = [parse_message(self.me.tg, message, emojis) for message in messages]
+      contents = [parse_message(self.me.tg, message) for message in messages]
       content = MessageObject(
         contents[0].id,
         "".join(message.content for message in contents),
@@ -121,8 +119,7 @@ class MTProtoAdapter(Adapter):
         contents[0].updated_at,
       )
     else:
-      emojis = await fetch_emojis(client, extract_emojis_from_tg_message(message))
-      content = parse_message(self.me.tg, message, emojis)
+      content = parse_message(self.me.tg, message)
     if not message.date:
       raise ValueError("Message has no date.")
     event = Event(
@@ -138,8 +135,7 @@ class MTProtoAdapter(Adapter):
 
   async def _on_callback_query(self, client: Client, callback: CallbackQuery) -> None:
     assert self.me
-    emojis = await fetch_emojis(client, extract_emojis_from_tg_message(callback.message))
-    message = parse_message(self.me.tg, callback.message, emojis)
+    message = parse_message(self.me.tg, callback.message)
     event = Event(
       "interaction/button",
       datetime.now(),
@@ -199,8 +195,7 @@ class MTProtoAdapter(Adapter):
     )
     if not message:
       raise ValueError("Message not exist.")
-    emojis = await fetch_emojis(self.client, extract_emojis_from_tg_message(message))
-    return parse_message(self.me.tg, message, emojis)
+    return parse_message(self.me.tg, message)
 
   async def _route_message_update(self, request: Request[MessageUpdateParam]) -> None:
     if not self.client or not self.me:

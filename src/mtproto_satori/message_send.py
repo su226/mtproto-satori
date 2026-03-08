@@ -1,8 +1,10 @@
 import base64
 import mimetypes
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
 from io import BytesIO
+from itertools import chain
 from pathlib import Path
 from typing import Literal, cast
 
@@ -26,7 +28,6 @@ from satori.model import MessageObject
 from satori.parser import Element, escape, parse
 from yarl import URL
 
-from mtproto_satori.emoji import extract_emojis_from_satori_elements, fetch_emojis
 from mtproto_satori.message_receive import parse_message
 
 
@@ -208,7 +209,7 @@ class SendMessageEncoder(MessageEncoder):
     self.thread_id = thread_id
 
   def add_result(self, result: Message) -> None:
-    self.result.append(parse_message(self.me, result, self.emojis))
+    self.result.append(parse_message(self.me, result))
 
   async def flush(self) -> None:
     if not (self.content or self.asset):
@@ -307,6 +308,33 @@ class SendMessageEncoder(MessageEncoder):
     self.asset = []
 
 
+def extract_emojis_without_name(element: Element | Iterable[Element]) -> set[int]:
+  if isinstance(element, Element):
+    if element.type == "emoji":
+      emoji_id = element.attrs.get("id")
+      if emoji_id and not element.attrs.get("name"):
+        try:
+          return {int(emoji_id)}
+        except ValueError:
+          pass
+      return set()
+    element = element.children
+  return set(chain.from_iterable(extract_emojis_without_name(element) for element in element))
+
+
+async def fetch_emojis(client: Client, emojis: Iterable[int]) -> dict[int, Sticker]:
+  emojis = list(emojis)
+  return (
+    {
+      sticker.custom_emoji_id: sticker
+      for sticker in await client.get_custom_emoji_stickers(emojis)
+      if sticker.custom_emoji_id
+    }
+    if emojis
+    else {}
+  )
+
+
 async def send_message(
   client: Client,
   me: User,
@@ -315,7 +343,7 @@ async def send_message(
   message: str,
 ) -> list[MessageObject]:
   elements = parse(message)
-  emojis = await fetch_emojis(client, extract_emojis_from_satori_elements(elements))
+  emojis = await fetch_emojis(client, extract_emojis_without_name(elements))
   encoder = SendMessageEncoder(client, me, channel_id, thread_id, emojis)
   await encoder.render(elements)
   await encoder.flush()
@@ -329,7 +357,7 @@ async def update_message(
   message: str,
 ) -> None:
   elements = parse(message)
-  emojis = await fetch_emojis(client, extract_emojis_from_satori_elements(elements, True))
+  emojis = await fetch_emojis(client, extract_emojis_without_name(elements))
   encoder = MessageEncoder(emojis)
   await encoder.render(elements)
   await client.edit_message_text(
