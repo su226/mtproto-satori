@@ -19,12 +19,14 @@ from pyrogram.types import (
   InputMediaPhoto,
   InputMediaVideo,
   Message,
+  Sticker,
   User,
 )
 from satori.model import MessageObject
 from satori.parser import Element, escape, parse
 from yarl import URL
 
+from mtproto_satori.emoji import extract_emojis_from_satori_elements, fetch_emojis
 from mtproto_satori.message_receive import parse_message
 
 
@@ -69,12 +71,18 @@ InputMediaNotAnimation = InputMediaAudio | InputMediaDocument | InputMediaPhoto 
 
 
 class MessageEncoder:
-  def __init__(self) -> None:
+  def __init__(self, emojis: dict[int, Sticker]) -> None:
     self.content = ""
     self.asset = list[Element]()
     self.mode: Literal["figure", "default"] = "default"
     self.reply = ""
     self.rows = list[list[InlineKeyboardButton]]()
+    self.emojis = emojis
+
+  def _get_emoji_name(self, emoji_id: int) -> str | None:
+    if emoji := self.emojis.get(emoji_id):
+      return emoji.emoji
+    return None
 
   async def visit(self, element: Element) -> None:
     if element.type == "text":
@@ -115,6 +123,11 @@ class MessageEncoder:
         id = element.attrs["id"]
         name = element.attrs.get("name", id)
         self.content += f'<a href="tg://user?id={id}">@{escape(name)}</a>'
+    elif element.type == "emoji":
+      if "id" in element.attrs:
+        id = element.attrs["id"]
+        name = element.attrs.get("name") or self._get_emoji_name(int(id)) or "😀"
+        self.content += f'<tg-emoji emoji-id="{id}">{escape(name)}</tg-emoji>'
     elif element.type in ("img", "image", "audio", "video", "file"):
       self.asset.append(element)
     elif element.type == "figure":
@@ -179,8 +192,15 @@ class MessageEncoder:
 
 
 class SendMessageEncoder(MessageEncoder):
-  def __init__(self, client: Client, me: User, channel_id: int, thread_id: int | None) -> None:
-    super().__init__()
+  def __init__(
+    self,
+    client: Client,
+    me: User,
+    channel_id: int,
+    thread_id: int | None,
+    emojis: dict[int, Sticker],
+  ) -> None:
+    super().__init__(emojis)
     self.result = list[MessageObject]()
     self.client = client
     self.me = me
@@ -188,7 +208,7 @@ class SendMessageEncoder(MessageEncoder):
     self.thread_id = thread_id
 
   def add_result(self, result: Message) -> None:
-    self.result.append(parse_message(self.me, result))
+    self.result.append(parse_message(self.me, result, self.emojis))
 
   async def flush(self) -> None:
     if not (self.content or self.asset):
@@ -295,7 +315,8 @@ async def send_message(
   message: str,
 ) -> list[MessageObject]:
   elements = parse(message)
-  encoder = SendMessageEncoder(client, me, channel_id, thread_id)
+  emojis = await fetch_emojis(client, extract_emojis_from_satori_elements(elements))
+  encoder = SendMessageEncoder(client, me, channel_id, thread_id, emojis)
   await encoder.render(elements)
   await encoder.flush()
   return encoder.result
@@ -308,7 +329,8 @@ async def update_message(
   message: str,
 ) -> None:
   elements = parse(message)
-  encoder = MessageEncoder()
+  emojis = await fetch_emojis(client, extract_emojis_from_satori_elements(elements, True))
+  encoder = MessageEncoder(emojis)
   await encoder.render(elements)
   await client.edit_message_text(
     channel_id,

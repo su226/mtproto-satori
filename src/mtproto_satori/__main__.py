@@ -1,5 +1,6 @@
-from satori.server import Server
 import json
+
+from satori.server import Server
 
 from mtproto_satori import MTProtoAdapter
 
@@ -13,15 +14,17 @@ def main() -> None:
     config.get("path", ""),
     token=config.get("token", ""),
   )
-  server.apply(MTProtoAdapter(
-    "session",
-    config["api_id"],
-    config["api_hash"],
-    config.get("phone", ""),
-    config.get("password", ""),
-    config.get("bot_token", ""),
-    config.get("proxy", None),
-  ))
+  server.apply(
+    MTProtoAdapter(
+      "session",
+      config["api_id"],
+      config["api_hash"],
+      config.get("phone", ""),
+      config.get("password", ""),
+      config.get("bot_token", ""),
+      config.get("proxy", None),
+    )
+  )
   server.run()
 
 

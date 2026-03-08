@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from typing import Any, Literal, cast
 
 from pyrogram.enums import MessageEntityType
-from pyrogram.types import Message, MessageEntity
+from pyrogram.types import Message, MessageEntity, Sticker
 from pyrogram.types import User as TGUser
 from satori.element import (
   At,
@@ -13,6 +13,7 @@ from satori.element import (
   Code,
   Custom,
   Element,
+  Emoji,
   File,
   Image,
   Italic,
@@ -52,12 +53,27 @@ class Status:
   mention: bool = False
   link: str | None = None
   user: TGUser | None = None
+  emoji: int | None = None
 
 
-def parse_text(text: str, entities: list[MessageEntity]) -> list[Element]:
+def parse_text(
+  text: str, entities: list[MessageEntity], emojis: dict[int, Sticker]
+) -> list[Element]:
   breakpoints = list[Breakpoint]()
   for entity in entities or []:
-    if entity.type in (MessageEntityType.BOLD, MessageEntityType.ITALIC, MessageEntityType.UNDERLINE, MessageEntityType.STRIKETHROUGH, MessageEntityType.CODE, MessageEntityType.PRE, MessageEntityType.SPOILER, MessageEntityType.MENTION, MessageEntityType.TEXT_LINK, MessageEntityType.TEXT_MENTION):
+    if entity.type in (
+      MessageEntityType.BOLD,
+      MessageEntityType.ITALIC,
+      MessageEntityType.UNDERLINE,
+      MessageEntityType.STRIKETHROUGH,
+      MessageEntityType.CODE,
+      MessageEntityType.PRE,
+      MessageEntityType.SPOILER,
+      MessageEntityType.MENTION,
+      MessageEntityType.TEXT_LINK,
+      MessageEntityType.TEXT_MENTION,
+      MessageEntityType.CUSTOM_EMOJI,
+    ):
       breakpoints.append(Breakpoint("start", entity.offset, entity))
       breakpoints.append(Breakpoint("end", entity.offset + entity.length, entity))
   for i, ch in enumerate(text):
@@ -71,7 +87,7 @@ def parse_text(text: str, entities: list[MessageEntity]) -> list[Element]:
   last_pos = 0
   for breakpoint in breakpoints:
     if breakpoint.pos > last_pos:
-      content = text[last_pos:breakpoint.pos]
+      content = text[last_pos : breakpoint.pos]
       element = Text(content)
       if status.bold:
         element = Bold(element)
@@ -97,6 +113,11 @@ def parse_text(text: str, entities: list[MessageEntity]) -> list[Element]:
         new_element = At(id=str(status.user.id), name=status.user.username)
         new_element.children.append(element)
         element = new_element
+      if status.emoji:
+        name = "😀"
+        if (sticker := emojis.get(status.emoji)) and sticker.emoji:
+          name = sticker.emoji
+        element = Emoji(str(status.emoji), name=name)
       if content == "\n":
         element = Br()
       elements.append(element)
@@ -121,6 +142,8 @@ def parse_text(text: str, entities: list[MessageEntity]) -> list[Element]:
         status.link = breakpoint.entity.url if breakpoint.mode == "start" else None
       elif breakpoint.entity.type == MessageEntityType.TEXT_MENTION:
         status.user = breakpoint.entity.user if breakpoint.mode == "start" else None
+      elif breakpoint.entity.type == MessageEntityType.CUSTOM_EMOJI:
+        status.emoji = breakpoint.entity.custom_emoji_id if breakpoint.mode == "start" else None
     last_pos = breakpoint.pos
   if last_pos < len(text):
     elements.append(Text(text[last_pos:]))
@@ -141,43 +164,67 @@ def parse_message_sender(me: TGUser, message: Message) -> User:
   raise ValueError("Message has no sender.")
 
 
-def parse_message(me: TGUser, message: Message) -> MessageObject:
+def parse_message(me: TGUser, message: Message, emojis: dict[int, Sticker]) -> MessageObject:
   elements = []
 
-  if message.reply_to_message and not (message.topic_message and message.reply_to_message.forum_topic_created):
-    quote_message = parse_message(me, message.reply_to_message)
+  if message.reply_to_message and not (
+    message.topic_message and message.reply_to_message.forum_topic_created
+  ):
+    quote_message = parse_message(me, message.reply_to_message, emojis)
     quote_user = parse_message_sender(me, message.reply_to_message)
     quote_elements = list[str | Element]()
     quote_elements.append(Author(quote_user.id, quote_user.name, quote_user.avatar))
     quote_elements.extend(quote_message.content)
     elements.append(Quote(str(message.reply_to_message.id), content=quote_elements))
 
-  elements.extend(parse_text(message.text or message.caption or "", message.entities or message.caption_entities or []))
+  elements.extend(
+    parse_text(
+      message.text or message.caption or "",
+      message.entities or message.caption_entities or [],
+      emojis,
+    )
+  )
 
   if message.caption:
     elements.append(Text(" "))
 
   if message.location:
-    elements.append(Custom("location", {"lat": message.location.latitude, "lon": message.location.longitude}))
+    elements.append(
+      Custom("location", {"lat": message.location.latitude, "lon": message.location.longitude})
+    )
   elif message.photo:
     elements.append(Image(f"internal:{PLATFORM}/{me.id}/{message.photo.file_id}"))
   elif message.sticker:
-    elements.append(Image(f"internal:{PLATFORM}/{me.id}/{message.sticker.file_id}", message.sticker.file_name))
+    elements.append(
+      Image(f"internal:{PLATFORM}/{me.id}/{message.sticker.file_id}", message.sticker.file_name)
+    )
   elif message.voice:
     elements.append(Audio(f"internal:{PLATFORM}/{me.id}/{message.voice.file_id}"))
   elif message.animation:
-    elements.append(Image(f"internal:{PLATFORM}/{me.id}/{message.animation.file_id}", message.animation.file_name))
+    elements.append(
+      Image(
+        f"internal:{PLATFORM}/{me.id}/{message.animation.file_id}", message.animation.file_name
+      )
+    )
   elif message.video:
-    elements.append(Video(f"internal:{PLATFORM}/{me.id}/{message.video.file_id}", message.video.file_name))
+    elements.append(
+      Video(f"internal:{PLATFORM}/{me.id}/{message.video.file_id}", message.video.file_name)
+    )
   elif message.document:
-    elements.append(File(f"internal:{PLATFORM}/{me.id}/{message.document.file_id}", message.document.file_name))
+    elements.append(
+      File(f"internal:{PLATFORM}/{me.id}/{message.document.file_id}", message.document.file_name)
+    )
   elif message.audio:
-    elements.append(Audio(f"internal:{PLATFORM}/{me.id}/{message.audio.file_id}", message.audio.file_name))
-    
+    elements.append(
+      Audio(f"internal:{PLATFORM}/{me.id}/{message.audio.file_id}", message.audio.file_name)
+    )
+
   if not message.chat:
     raise ValueError("Message has no chat.")
 
   guild, channel = parse_guild_channel(me.id, message.chat, message.message_thread_id)
   user = parse_message_sender(me, message)
 
-  return MessageObject.from_elements(str(message.id), elements, channel, guild, None, user, message.date, message.edit_date)
+  return MessageObject.from_elements(
+    str(message.id), elements, channel, guild, None, user, message.date, message.edit_date
+  )
