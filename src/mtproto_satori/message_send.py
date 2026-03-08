@@ -65,7 +65,7 @@ async def get_file(url: str, name: str, timeout: int) -> DownloadedFile:
   return DownloadedFile(name, data, mime)
 
 
-InputMediaAny = InputMediaAudio | InputMediaDocument | InputMediaPhoto | InputMediaVideo
+InputMediaNotAnimation = InputMediaAudio | InputMediaDocument | InputMediaPhoto | InputMediaVideo
 
 
 class MessageEncoder:
@@ -179,12 +179,13 @@ class MessageEncoder:
 
 
 class SendMessageEncoder(MessageEncoder):
-  def __init__(self, client: Client, me: User, channel_id: int) -> None:
+  def __init__(self, client: Client, me: User, channel_id: int, thread_id: int | None) -> None:
     super().__init__()
     self.result = list[MessageObject]()
     self.client = client
     self.me = me
     self.channel_id = channel_id
+    self.thread_id = thread_id
 
   def add_result(self, result: Message) -> None:
     self.result.append(parse_message(self.me, result))
@@ -196,7 +197,7 @@ class SendMessageEncoder(MessageEncoder):
       self.rows.pop()
     if self.asset:
       animations = list[InputMediaAnimation]()
-      others = list[InputMediaAny]()
+      others = list[InputMediaNotAnimation]()
       for i, element in enumerate(self.asset):
         file = await get_file(
           element.attrs.get("src") or element.attrs["url"],
@@ -232,6 +233,7 @@ class SendMessageEncoder(MessageEncoder):
           self.channel_id,
           others,
           reply_to_message_id=int(self.reply) if self.reply else cast(int, None),
+          message_thread_id=cast(int, self.thread_id),
         )
         results.extend(result)
 
@@ -249,6 +251,7 @@ class SendMessageEncoder(MessageEncoder):
           parse_mode=ParseMode.HTML,
           has_spoiler=file.has_spoiler,
           reply_to_message_id=reply,
+          message_thread_id=cast(int, self.thread_id),
         )
         results.append(cast(Message, result))
 
@@ -260,6 +263,7 @@ class SendMessageEncoder(MessageEncoder):
             ParseMode.HTML,
             reply_to_message_id=results[0].id,
             reply_markup=InlineKeyboardMarkup(self.rows),
+            message_thread_id=cast(int, self.thread_id),
           )
         )
 
@@ -271,6 +275,7 @@ class SendMessageEncoder(MessageEncoder):
         self.content,
         ParseMode.HTML,
         reply_to_message_id=int(self.reply) if self.reply else cast(int, None),
+        message_thread_id=cast(int, self.thread_id),
         reply_markup=InlineKeyboardMarkup(self.rows)
         if self.rows and self.rows[0]
         else cast(InlineKeyboardMarkup, None),
@@ -286,10 +291,11 @@ async def send_message(
   client: Client,
   me: User,
   channel_id: int,
+  thread_id: int | None,
   message: str,
 ) -> list[MessageObject]:
   elements = parse(message)
-  encoder = SendMessageEncoder(client, me, channel_id)
+  encoder = SendMessageEncoder(client, me, channel_id, thread_id)
   await encoder.render(elements)
   await encoder.flush()
   return encoder.result

@@ -167,10 +167,18 @@ class MTProtoAdapter(Adapter):
   async def _route_message_create(self, request: Request[MessageParam]) -> list[MessageObject]:
     if not self.client or not self.me:
       raise ValueError("Client not started")
+    split_id = request.params["channel_id"].split(":", 1)
+    if len(split_id) == 2:
+      channel_id = int(split_id[0])
+      thread_id = int(split_id[1])
+    else:
+      channel_id = int(split_id[0])
+      thread_id = None
     return await send_message(
       self.client,
       self.me.tg,
-      int(request.params["channel_id"]),
+      channel_id,
+      thread_id,
       request.params["content"],
     )
 
