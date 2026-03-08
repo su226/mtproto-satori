@@ -23,3 +23,6 @@ build-backend = "hatchling.build"
 [tool.ruff]
 line-length = 99
 indent-width = 2
+
+[tool.pyright]
+typeCheckingMode = "standard"

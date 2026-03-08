@@ -1,12 +1,12 @@
 # mtproto-satori
 
-A [Satori](https://satori.chat) implementation based on MTProto using [Pyrofork](https://github.com/Mayuri-Chan/pyrofork) and [satori-python](https://github.com/RF-Tar-Railt/satori-python).
+A [Satori](https://satori.chat) implementation based on MTProto using [Kurigram](https://github.com/KurimuzonAkuma/kurigram) and [satori-python](https://github.com/RF-Tar-Railt/satori-python).
 
 ## Usage
 
 Obtain your `api_id` and `api_hash` at <https://my.telegram.org>.
 
-Create `config.json`.
+Create `config.json`. (Do NOT include comments.)
 
 ```jsonc
 {
@@ -31,3 +31,49 @@ Create `config.json`.
 Install dependencies with `uv sync`.
 
 Start with `uv run mtproto-satori`.
+
+## Features
+
+### API
+- [x] login.get
+- [x] user.get
+- [x] user.channel.create
+- [x] message.create
+- [x] message.get
+- [x] message.update
+
+### Event
+- [x] message-created
+- [x] interaction/button
+
+### Element
+
+#### Standard
+- [x] at
+- [ ] sharp (Not supported in Telegram)
+- [x] emoji
+- [x] a
+- [x] img
+- [x] audio
+- [x] video
+- [x] file
+- [x] b / strong
+- [x] i / em
+- [x] u / ins
+- [x] s / del
+- [x] spl
+- [x] code
+- [ ] sup (Not supported in Telegram)
+- [ ] sub (Not supported in Telegram)
+- [x] br
+- [x] p
+- [x] message
+- [x] quote
+- [x] author
+- [x] button
+
+#### Non-standard, but appeared in [@satorijs/adapter-telegram](https://www.npmjs.com/package/@satorijs/adapter-telegram)
+- [x] image
+- [x] figure
+- [x] pre / code-block
+- [x] button-group

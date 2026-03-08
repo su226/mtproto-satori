@@ -120,9 +120,9 @@ class MessageEncoder:
       else:
         await self.render(element.children)
       self.content += "</code>"
-    elif element.type == "code-block":
-      if "lang" in element.attrs:
-        attrs = f' class="language-{element.attrs["lang"]}"'
+    elif element.type in ("pre", "code-block"):
+      if lang := element.attrs.get("lang"):
+        attrs = f' class="language-{escape(lang, True)}"'
       else:
         attrs = ""
       self.content += f"<pre><code{attrs}>"
@@ -135,7 +135,7 @@ class MessageEncoder:
         except ValueError:
           # ID 代表用户名，始终获取用户 ID，用户名不存在就瞎填一个 ID
           username = id.removeprefix("@")
-          id = user.id if (user := self.users.get(username)) else f"@{username}"
+          id = user.id if (user := self.users.get(username)) else escape(f"@{username}", True)
           display = element.attrs.get("name") or f"@{username}"
           self.content += f'<a href="tg://user?id={id}">{escape(display)}</a>'
         else:
@@ -144,7 +144,8 @@ class MessageEncoder:
           self.content += f'<a href="tg://user?id={id}">{escape(display)}</a>'
     elif element.type == "emoji":
       if id := element.attrs.get("id"):
-        name = element.attrs.get("name") or self._get_emoji_name(int(id)) or "😀"
+        id = int(id)
+        name = element.attrs.get("name") or self._get_emoji_name(id) or "😀"
         self.content += f'<tg-emoji emoji-id="{id}">{escape(name)}</tg-emoji>'
     elif element.type in ("img", "image", "audio", "video", "file"):
       self.asset.append(element)

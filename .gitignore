@@ -10,4 +10,6 @@ wheels/
 .venv
 
 /config.json
+/start.sh
 /session.session
+/session.session-journal

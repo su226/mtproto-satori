@@ -48,7 +48,7 @@ class Status:
   underline: bool = False
   strikethrough: bool = False
   code: bool = False
-  pre: bool = False
+  pre: str | None = None
   spoiler: bool = False
   mention: bool = False
   link: str | None = None
@@ -97,8 +97,9 @@ def parse_text(text: str, entities: list[MessageEntity]) -> list[Element]:
         element = Strikethrough(element)
       if status.code:
         element = Code(element)
-      if status.pre:
-        element = Custom("pre", None, [element])
+      if status.pre is not None:
+        attrs = {"lang": status.pre} if status.pre != "" else {}
+        element = Custom("pre", attrs, [element])
       if status.spoiler:
         element = Spoiler(cast(Any, element))
       if status.mention:
@@ -129,7 +130,7 @@ def parse_text(text: str, entities: list[MessageEntity]) -> list[Element]:
       elif breakpoint.entity.type == MessageEntityType.CODE:
         status.code = breakpoint.mode == "start"
       elif breakpoint.entity.type == MessageEntityType.PRE:
-        status.pre = breakpoint.mode == "start"
+        status.pre = breakpoint.entity.language or "" if breakpoint.mode == "start" else None
       elif breakpoint.entity.type == MessageEntityType.SPOILER:
         status.spoiler = breakpoint.mode == "start"
       elif breakpoint.entity.type == MessageEntityType.MENTION:
