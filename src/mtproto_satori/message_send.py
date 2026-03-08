@@ -105,7 +105,15 @@ class MessageEncoder:
       await self.render(element.children)
       if not self.content.endswith("\n"):
         self.content += "\n"
-    elif element.type in ("b", "strong", "i", "em", "u", "ins", "s", "del", "a"):
+    elif element.type == "a":
+      if href := element.attrs.get("href"):
+        attrs = f' href="{escape(href, True)}"'
+      else:
+        attrs = ""
+      self.content += f"<a{attrs}>"
+      await self.render(element.children)
+      self.content += "</a>"
+    elif element.type in ("b", "strong", "i", "em", "u", "ins", "s", "del"):
       self.content += f"<{element.type}>"
       await self.render(element.children)
       self.content += f"</{element.type}>"

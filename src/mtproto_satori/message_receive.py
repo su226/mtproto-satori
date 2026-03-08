@@ -107,7 +107,7 @@ def parse_text(text: str, entities: list[MessageEntity]) -> list[Element]:
         element = At(username, username)
       if status.link:
         new_element = Link(status.link)
-        element.children.append(element)
+        new_element.children.append(element)
         element = new_element
       if status.user:
         new_element = At(id=str(status.user.id), name=status.user.username)
