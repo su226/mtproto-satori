@@ -88,7 +88,7 @@ def parse_text(text: str, entities: list[MessageEntity]) -> list[Element]:
       if status.spoiler:
         element = Spoiler(cast(Any, element))
       if status.mention:
-        element = At(name=content[1:])
+        element = At(content[1:], content)
       if status.link:
         new_element = Link(status.link)
         element.children.append(element)
@@ -127,13 +127,26 @@ def parse_text(text: str, entities: list[MessageEntity]) -> list[Element]:
   return elements
 
 
+def parse_message_sender(me: TGUser, message: Message) -> User:
+  if message.sender_chat:
+    return parse_sender_chat(me.id, message.sender_chat)
+  if message.from_user:
+    return parse_user(me.id, message.from_user)
+  if message.outgoing:
+    # 私聊发送的消息没有 from_user
+    return parse_user(me.id, me)
+  if message.chat:
+    # 频道消息既没有 sender_chat 也没有 from_user
+    return parse_sender_chat(me.id, message.chat)
+  raise ValueError("Message has no sender.")
+
+
 def parse_message(me: TGUser, message: Message) -> MessageObject:
   elements = []
 
-  if message.reply_to_message and not (message.is_topic_message and message.reply_to_message.forum_topic_created):
+  if message.reply_to_message and not (message.topic_message and message.reply_to_message.forum_topic_created):
     quote_message = parse_message(me, message.reply_to_message)
-    quote_user = quote_message.user
-    assert quote_user
+    quote_user = parse_message_sender(me, message.reply_to_message)
     quote_elements = list[str | Element]()
     quote_elements.append(Author(quote_user.id, quote_user.name, quote_user.avatar))
     quote_elements.extend(quote_message.content)
@@ -160,17 +173,11 @@ def parse_message(me: TGUser, message: Message) -> MessageObject:
     elements.append(File(f"internal:{PLATFORM}/{me.id}/{message.document.file_id}", message.document.file_name))
   elif message.audio:
     elements.append(Audio(f"internal:{PLATFORM}/{me.id}/{message.audio.file_id}", message.audio.file_name))
+    
+  if not message.chat:
+    raise ValueError("Message has no chat.")
 
   guild, channel = parse_guild_channel(me.id, message.chat, message.message_thread_id)
-  if message.sender_chat:
-    user = parse_sender_chat(me.id, message.sender_chat)
-  elif message.from_user:
-    user = parse_user(me.id, message.from_user)
-  elif message.outgoing:
-    # 私聊发送的消息没有 from_user
-    user = parse_user(me.id, me)
-  else:
-    # 频道消息既没有 sender_chat 也没有 from_user
-    user = parse_sender_chat(me.id, message.chat)
+  user = parse_message_sender(me, message)
 
   return MessageObject.from_elements(str(message.id), elements, channel, guild, None, user, message.date, message.edit_date)

@@ -28,7 +28,7 @@ from satori.server.route import (
   MessageParam,
   MessageUpdateParam,
   UserChannelCreateParam,
-  UserGetParam,
+  UserOpParam,
 )
 from starlette.responses import Response, StreamingResponse
 
@@ -74,7 +74,7 @@ class MTProtoAdapter(Adapter):
     self.bot_token = bot_token
     self.client: Client | None = None
     self.me: Me | None = None
-    self.media_groups = dict[str, tuple[datetime, list[Message]]]()
+    self.media_groups = dict[int, tuple[datetime, list[Message]]]()
     self.route(Api.LOGIN_GET)(self._route_login_get)
     self.route(Api.USER_GET)(self._route_user_get)
     self.route(Api.USER_CHANNEL_CREATE)(self._route_user_channel_create)
@@ -120,6 +120,8 @@ class MTProtoAdapter(Adapter):
       )
     else:
       content = parse_message(self.me.tg, message)
+    if not message.date:
+      raise ValueError("Message has no date.")
     event = Event(
       "message-created",
       message.date,
@@ -138,11 +140,11 @@ class MTProtoAdapter(Adapter):
       "interaction/button",
       datetime.now(),
       self.me.satori,
-      button=ButtonInteraction(cast(str, callback.data)),
+      button=ButtonInteraction(callback.data.decode(errors="replace") if isinstance(callback.data, bytes) else callback.data),
       channel=message.channel,
       guild=message.guild,
       message=message,
-      user=parse_user(self.me.tg.id, callback.message.from_user),
+      user=parse_user(self.me.tg.id, callback.from_user),
     )
     await self.queue.put(event)
     await callback.answer()
@@ -153,7 +155,7 @@ class MTProtoAdapter(Adapter):
     await self._update_me()
     return self.me.satori
 
-  async def _route_user_get(self, request: Request[UserGetParam]) -> User:
+  async def _route_user_get(self, request: Request[UserOpParam]) -> User:
     if not self.client or not self.me:
       raise ValueError("Client not started")
     user = cast(TGUser, await self.client.get_users(request.params["user_id"]))
@@ -179,7 +181,9 @@ class MTProtoAdapter(Adapter):
       int(request.params["channel_id"]),
       int(request.params["message_id"]),
     )
-    return parse_message(self.me.tg, cast(Message, message))
+    if not message:
+      raise ValueError("Message not exist.")
+    return parse_message(self.me.tg, message)
 
   async def _route_message_update(self, request: Request[MessageUpdateParam]) -> None:
     if not self.client or not self.me:
@@ -231,7 +235,7 @@ class MTProtoAdapter(Adapter):
     file_id = FileId.decode(path)
     if not self.client or not file_id:
       return Response("Not found", 404)
-    return StreamingResponse(cast(AsyncIterator[bytes], self.client.get_file(file_id)))
+    return StreamingResponse(self.client.get_file(file_id))
 
   async def _update_me(self) -> None:
     assert self.client

@@ -12,7 +12,6 @@ from pyrogram.client import Client
 from pyrogram.enums import ParseMode
 from pyrogram.types import (
   InlineKeyboardButton,
-  InlineKeyboardButtonBuy,
   InlineKeyboardMarkup,
   InputMediaAnimation,
   InputMediaAudio,
@@ -66,9 +65,7 @@ async def get_file(url: str, name: str, timeout: int) -> DownloadedFile:
   return DownloadedFile(name, data, mime)
 
 
-InputMediaAny = (
-  InputMediaAnimation | InputMediaAudio | InputMediaDocument | InputMediaPhoto | InputMediaVideo
-)
+InputMediaAny = InputMediaAudio | InputMediaDocument | InputMediaPhoto | InputMediaVideo
 
 
 class MessageEncoder:
@@ -77,7 +74,7 @@ class MessageEncoder:
     self.asset = list[Element]()
     self.mode: Literal["figure", "default"] = "default"
     self.reply = ""
-    self.rows = list[list[InlineKeyboardButton | InlineKeyboardButtonBuy]]()
+    self.rows = list[list[InlineKeyboardButton]]()
 
   async def visit(self, element: Element) -> None:
     if element.type == "text":
@@ -85,10 +82,10 @@ class MessageEncoder:
     elif element.type == "br":
       self.content += "\n"
     elif element.type == "p":
-      if self.content.endswith("\n"):
+      if not self.content.endswith("\n"):
         self.content += "\n"
       await self.render(element.children)
-      if self.content.endswith("\n"):
+      if not self.content.endswith("\n"):
         self.content += "\n"
     elif element.type in ("b", "strong", "i", "em", "u", "ins", "s", "del", "a"):
       self.content += f"<{element.type}>"

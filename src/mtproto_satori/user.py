@@ -47,5 +47,5 @@ def parse_guild_channel(
       chat.title,
       f"internal:{PLATFORM}/{self_id}/{chat.photo.big_file_id}" if chat.photo else None,
     )
-    channel = Channel(str(thread_id) if thread_id else str(chat.id))
+    channel = Channel(f"{chat.id}:{thread_id}" if thread_id else str(chat.id))
   return guild, channel
