@@ -11,6 +11,7 @@ from pyrogram.client import Client
 from pyrogram.file_id import FileId
 from pyrogram.types import CallbackQuery, Message
 from pyrogram.types import User as TGUser
+from satori import EventType
 from satori.model import (
   ButtonInteraction,
   Channel,
@@ -124,7 +125,7 @@ class MTProtoAdapter(Adapter):
     if not message.date:
       raise ValueError("Message has no date.")
     event = Event(
-      "message-created",
+      EventType.MESSAGE_CREATED,
       message.date,
       self.me.satori,
       channel=content.channel,
@@ -139,7 +140,7 @@ class MTProtoAdapter(Adapter):
       raise ValueError("Client is not fully initalized.")
     message = parse_message(self.me.tg, callback.message)
     event = Event(
-      "interaction/button",
+      EventType.INTERACTION_BUTTON,
       datetime.now(),
       self.me.satori,
       button=ButtonInteraction(
@@ -229,7 +230,7 @@ class MTProtoAdapter(Adapter):
       me = await self._update_me()
       await self.queue.put(
         Event(
-          "login-added",
+          EventType.LOGIN_ADDED,
           datetime.now(),
           me.satori,
         )

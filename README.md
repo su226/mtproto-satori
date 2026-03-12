@@ -13,6 +13,7 @@ Create `config.json`. (Do NOT include comments.)
   "host": "127.0.0.1", // Optional, defaults to "127.0.0.1"
   "port": 5140, // Optional, defaults to 5140
   "path": "/satori", // Optional, defaults to ""
+  "token": "", // Optional, defaults to ""
   "api_id": 12345, // Required, example value here won't work
   "api_hash": "0123456789abcdef0123456789abcdef", // Required, example value here won't work
   "phone": "", // Either phone or bot_token is required
@@ -134,4 +135,5 @@ Start with `uv run mtproto-satori`.
 - [x] button-group
 - [x] figure
 - [x] image
+- [x] location (Receive only)
 - [x] pre / code-block

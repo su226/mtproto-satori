@@ -8,6 +8,7 @@ from itertools import chain
 from pathlib import Path
 from typing import Literal, cast
 
+import aiohttp
 from graia.amnesia.builtins.aiohttp import AiohttpClientService
 from launart import Launart
 from pyrogram.client import Client
@@ -39,6 +40,19 @@ class DownloadedFile:
 
 
 BASE64_HEADER = re.compile(r"^data:([\w/.+-]+);base64,")
+_aiohttp: aiohttp.ClientSession | None = None
+
+
+def get_aiohttp() -> aiohttp.ClientSession:
+  try:
+    manager = Launart.current()
+    client = manager.get_component(AiohttpClientService).session
+  except (LookupError, ValueError):
+    global _aiohttp
+    if not _aiohttp:
+      _aiohttp = aiohttp.ClientSession()
+    client = _aiohttp
+  return client
 
 
 async def get_file(url: str, name: str, timeout: int) -> DownloadedFile:
@@ -56,10 +70,9 @@ async def get_file(url: str, name: str, timeout: int) -> DownloadedFile:
     if not name:
       name = path.name
   else:
-    manager = Launart.current()
-    aiohttp = manager.get_component(AiohttpClientService)
     parsed = URL(url)
-    async with aiohttp.session.get(parsed) as response:
+    client = get_aiohttp()
+    async with client.get(parsed) as response:
       data = await response.read()
     mime = response.headers.get("Content-Type", "application/octet-stream")
     mime = re.split(r"[;,]", mime, 1)[0]
@@ -253,10 +266,13 @@ class SendMessageEncoder(MessageEncoder):
           int(element.attrs.get("timeout", 0)),
         )
         data = BytesIO(file.data)
-        data.name = str(i) + file.filename
+        data.name = file.filename
         if file.mime == "image/gif":
           animations.append(InputMediaAnimation(data, has_spoiler="spoiler" in element.attrs))
         elif element.type in ("img", "image"):
+          ext = mimetypes.guess_extension(file.mime) or ".bin"
+          if not data.name.endswith(ext):
+            data.name += ext
           others.append(InputMediaPhoto(data, has_spoiler="spoiler" in element.attrs))
         elif element.type == "audio":
           others.append(InputMediaAudio(data))
