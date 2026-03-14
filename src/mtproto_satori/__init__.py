@@ -21,6 +21,7 @@ from satori import (
   Guild,
   Login,
   LoginStatus,
+  Member,
   MessageObject,
   User,
 )
@@ -28,6 +29,7 @@ from satori.server import Adapter, Request
 from satori.server.route import (
   ChannelParam,
   GuildGetParam,
+  GuildMemberGetParam,
   MessageOpParam,
   MessageParam,
   MessageUpdateParam,
@@ -41,6 +43,7 @@ from mtproto_satori.message_receive import parse_message
 from mtproto_satori.message_send import send_message, update_message
 from mtproto_satori.user import (
   parse_guild,
+  parse_member,
   parse_sender_chat,
   parse_user,
   resolve_channel_id,
@@ -88,6 +91,7 @@ class MTProtoAdapter(Adapter):
     self.media_groups = dict[int, tuple[datetime, list[Message]]]()
     self.route(Api.CHANNEL_GET)(self._route_channel_get)
     self.route(Api.GUILD_GET)(self._route_guild_get)
+    self.route(Api.GUILD_MEMBER_GET)(self._route_guild_member_get)
     self.route(Api.LOGIN_GET)(self._route_login_get)
     self.route(Api.USER_GET)(self._route_user_get)
     self.route(Api.USER_CHANNEL_CREATE)(self._route_user_channel_create)
@@ -191,6 +195,14 @@ class MTProtoAdapter(Adapter):
       raise ValueError("Direct messages have no guild")
     chat = await self.client.get_chat(chat_id)
     return parse_guild(self.me.tg.id, chat)
+
+  async def _route_guild_member_get(self, request: Request[GuildMemberGetParam]) -> Member:
+    if not self.client or not self.me:
+      raise ValueError("Client not started")
+    chat_id = await resolve_peer(self.client, request.params["guild_id"])
+    user_id = await resolve_peer(self.client, request.params["user_id"])
+    member = await self.client.get_chat_member(chat_id, user_id)
+    return parse_member(self.me.tg.id, member)
 
   async def _route_login_get(self, request: Request[Any]) -> Login:
     if not self.client or not self.me:

@@ -49,7 +49,7 @@ Start with `uv run mtproto-satori`.
 - [x] guild.get
 - [ ] guild.list
 - [ ] guild.approve
-- [ ] guild.member.get
+- [x] guild.member.get
 - [ ] guild.member.list
 - [ ] guild.member.kick
 - [ ] guild.member.mute

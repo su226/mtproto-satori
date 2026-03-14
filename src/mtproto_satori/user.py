@@ -1,9 +1,9 @@
 from pyrogram.client import Client
 from pyrogram.enums import ChatType
 from pyrogram.raw.types import InputPeerChannel, InputPeerChat, InputPeerUser
-from pyrogram.types import Chat
+from pyrogram.types import Chat, ChatMember
 from pyrogram.types import User as TGUser
-from satori.model import Channel, ChannelType, Guild, User
+from satori import Channel, ChannelType, Guild, Member, Role, User
 
 from mtproto_satori.const import PLATFORM
 
@@ -55,6 +55,14 @@ def parse_guild_channel(
     guild = parse_guild(self_id, chat)
     channel = Channel(f"{chat.id}:{thread_id}" if thread_id else str(chat.id))
   return guild, channel
+
+
+def parse_member(self_id: int, member: ChatMember) -> Member:
+  return Member(
+    parse_user(self_id, member.user),
+    joined_at=member.joined_date,
+    roles=[Role(id=member.status.name.lower())],
+  )
 
 
 async def resolve_peer(client: Client, guild_id: str) -> int:
