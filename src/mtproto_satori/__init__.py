@@ -9,7 +9,18 @@ from launart import Launart
 from launart.status import Phase
 from pyrogram.client import Client
 from pyrogram.file_id import FileId
-from pyrogram.types import CallbackQuery, Message
+from pyrogram.raw.functions.channels.get_participants import GetParticipants
+from pyrogram.raw.functions.messages.get_full_chat import GetFullChat
+from pyrogram.raw.types.channel_full import ChannelFull
+from pyrogram.raw.types.channel_participants_search import ChannelParticipantsSearch
+from pyrogram.raw.types.channels.channel_participants_not_modified import (
+  ChannelParticipantsNotModified,
+)
+from pyrogram.raw.types.chat_participants_forbidden import ChatParticipantsForbidden
+from pyrogram.raw.types.input_channel import InputChannel
+from pyrogram.raw.types.input_peer_channel import InputPeerChannel
+from pyrogram.raw.types.input_peer_chat import InputPeerChat
+from pyrogram.types import CallbackQuery, ChatMember, Message
 from pyrogram.types import User as TGUser
 from satori import (
   Api,
@@ -23,6 +34,7 @@ from satori import (
   LoginStatus,
   Member,
   MessageObject,
+  PageResult,
   User,
 )
 from satori.server import Adapter, Request
@@ -30,6 +42,7 @@ from satori.server.route import (
   ChannelParam,
   GuildGetParam,
   GuildMemberGetParam,
+  GuildXXXListParam,
   MessageOpParam,
   MessageParam,
   MessageUpdateParam,
@@ -92,6 +105,7 @@ class MTProtoAdapter(Adapter):
     self.route(Api.CHANNEL_GET)(self._route_channel_get)
     self.route(Api.GUILD_GET)(self._route_guild_get)
     self.route(Api.GUILD_MEMBER_GET)(self._route_guild_member_get)
+    self.route(Api.GUILD_MEMBER_LIST)(self._route_guild_member_list)
     self.route(Api.LOGIN_GET)(self._route_login_get)
     self.route(Api.USER_GET)(self._route_user_get)
     self.route(Api.USER_CHANNEL_CREATE)(self._route_user_channel_create)
@@ -203,6 +217,66 @@ class MTProtoAdapter(Adapter):
     user_id = await resolve_peer(self.client, request.params["user_id"])
     member = await self.client.get_chat_member(chat_id, user_id)
     return parse_member(self.me.tg.id, member)
+
+  async def _route_guild_member_list(
+    self,
+    request: Request[GuildXXXListParam],
+  ) -> PageResult[Member]:
+    if not self.client or not self.me:
+      raise ValueError("Client not started")
+    peer_id = request.params["guild_id"]
+    try:
+      peer_id = int(peer_id)
+    except ValueError:
+      pass
+    # Not using our resolve_peer since we need access hash...
+    peer = await self.client.resolve_peer(peer_id)
+    if isinstance(peer, InputPeerChannel):
+      # Pyrogram doesn't provide offset parameter, use raw API instead.
+      offset = int(request.params.get("next", 0))
+      r = await self.client.invoke(
+        GetParticipants(
+          channel=InputChannel(channel_id=peer.channel_id, access_hash=peer.access_hash),
+          filter=ChannelParticipantsSearch(q=""),
+          offset=offset,
+          limit=200,
+          hash=0,
+        ),
+        sleep_threshold=60,
+      )
+      if isinstance(r, ChannelParticipantsNotModified):
+        raise TypeError("Telegram returned ChannelParticipantsNotModified even if hash is 0.")
+
+      members = r.participants
+      users = {u.id: u for u in r.users}
+      chats = {c.id: c for c in r.chats}
+
+      return PageResult(
+        [
+          parse_member(self.me.tg.id, ChatMember._parse(self.client, member, users, chats))
+          for member in members
+        ],
+        str(offset + len(members)) if members else None,
+      )
+    elif isinstance(peer, InputPeerChat):
+      r = await self.client.invoke(GetFullChat(chat_id=peer.chat_id))
+      if isinstance(r.full_chat, ChannelFull):
+        raise TypeError("Telegram returned ChannelFull even if peer is a group.")
+      if isinstance(r.full_chat.participants, ChatParticipantsForbidden):
+        raise ValueError("Get participants of this group is forbidden.")
+
+      members = r.full_chat.participants.participants
+      users = {i.id: i for i in r.users}
+      chats = {}
+
+      return PageResult(
+        [
+          parse_member(self.me.tg.id, ChatMember._parse(self.client, member, users, chats))
+          for member in members
+        ]
+      )
+    else:
+      raise ValueError("Not a group or channel.")
 
   async def _route_login_get(self, request: Request[Any]) -> Login:
     if not self.client or not self.me:
