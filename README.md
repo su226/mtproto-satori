@@ -46,7 +46,7 @@ Start with `uv run mtproto-satori`.
 - [ ] friend.list
 - [ ] friend.delete
 - [ ] friend.approve
-- [ ] guild.get
+- [x] guild.get
 - [ ] guild.list
 - [ ] guild.approve
 - [ ] guild.member.get

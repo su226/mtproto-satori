@@ -9,26 +9,25 @@ from launart import Launart
 from launart.status import Phase
 from pyrogram.client import Client
 from pyrogram.file_id import FileId
-from pyrogram.raw.types.input_peer_channel import InputPeerChannel
-from pyrogram.raw.types.input_peer_chat import InputPeerChat
-from pyrogram.raw.types.input_peer_user import InputPeerUser
 from pyrogram.types import CallbackQuery, Message
 from pyrogram.types import User as TGUser
-from satori import EventType
-from satori.model import (
+from satori import (
+  Api,
   ButtonInteraction,
   Channel,
   ChannelType,
   Event,
+  EventType,
+  Guild,
   Login,
   LoginStatus,
   MessageObject,
   User,
 )
-from satori.server import Adapter, Api
-from satori.server.model import Request
+from satori.server import Adapter, Request
 from satori.server.route import (
   ChannelParam,
+  GuildGetParam,
   MessageOpParam,
   MessageParam,
   MessageUpdateParam,
@@ -41,6 +40,7 @@ from mtproto_satori.const import ADAPTER, PLATFORM
 from mtproto_satori.message_receive import parse_message
 from mtproto_satori.message_send import send_message, update_message
 from mtproto_satori.user import (
+  parse_guild,
   parse_sender_chat,
   parse_user,
   resolve_channel_id,
@@ -87,6 +87,7 @@ class MTProtoAdapter(Adapter):
     self.me: Me | None = None
     self.media_groups = dict[int, tuple[datetime, list[Message]]]()
     self.route(Api.CHANNEL_GET)(self._route_channel_get)
+    self.route(Api.GUILD_GET)(self._route_guild_get)
     self.route(Api.LOGIN_GET)(self._route_login_get)
     self.route(Api.USER_GET)(self._route_user_get)
     self.route(Api.USER_CHANNEL_CREATE)(self._route_user_channel_create)
@@ -181,6 +182,15 @@ class MTProtoAdapter(Adapter):
       channel_id = str(chat_id)
       channel_type = ChannelType.TEXT
     return Channel(channel_id, channel_type)
+
+  async def _route_guild_get(self, request: Request[GuildGetParam]) -> Guild:
+    if not self.client or not self.me:
+      raise ValueError("Client not started")
+    chat_id = await resolve_peer(self.client, request.params["guild_id"])
+    if chat_id > 0:
+      raise ValueError("Direct messages have no guild")
+    chat = await self.client.get_chat(chat_id)
+    return parse_guild(self.me.tg.id, chat)
 
   async def _route_login_get(self, request: Request[Any]) -> Login:
     if not self.client or not self.me:

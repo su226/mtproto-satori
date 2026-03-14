@@ -37,6 +37,14 @@ def parse_sender_chat(self_id: int, chat: Chat) -> User:
   )
 
 
+def parse_guild(self_id: int, chat: Chat) -> Guild:
+  return Guild(
+    str(chat.id),
+    chat.title,
+    f"internal:{PLATFORM}/{self_id}/{chat.photo.big_file_id}" if chat.photo else None,
+  )
+
+
 def parse_guild_channel(
   self_id: int, chat: Chat, thread_id: int | None = None
 ) -> tuple[Guild | None, Channel]:
@@ -44,11 +52,7 @@ def parse_guild_channel(
     guild = None
     channel = Channel(str(chat.id), ChannelType.DIRECT)
   else:
-    guild = Guild(
-      str(chat.id),
-      chat.title,
-      f"internal:{PLATFORM}/{self_id}/{chat.photo.big_file_id}" if chat.photo else None,
-    )
+    guild = parse_guild(self_id, chat)
     channel = Channel(f"{chat.id}:{thread_id}" if thread_id else str(chat.id))
   return guild, channel
 
