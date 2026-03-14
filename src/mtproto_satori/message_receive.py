@@ -56,24 +56,25 @@ class Status:
   emoji: int | None = None
 
 
-def parse_text(text: str, entities: list[MessageEntity]) -> list[Element]:
+def parse_text(text: str, entities: list[MessageEntity] | None) -> list[Element]:
   breakpoints = list[Breakpoint]()
-  for entity in entities or []:
-    if entity.type in (
-      MessageEntityType.BOLD,
-      MessageEntityType.ITALIC,
-      MessageEntityType.UNDERLINE,
-      MessageEntityType.STRIKETHROUGH,
-      MessageEntityType.CODE,
-      MessageEntityType.PRE,
-      MessageEntityType.SPOILER,
-      MessageEntityType.MENTION,
-      MessageEntityType.TEXT_LINK,
-      MessageEntityType.TEXT_MENTION,
-      MessageEntityType.CUSTOM_EMOJI,
-    ):
-      breakpoints.append(Breakpoint("start", entity.offset, entity))
-      breakpoints.append(Breakpoint("end", entity.offset + entity.length, entity))
+  if entities:
+    for entity in entities:
+      if entity.type in (
+        MessageEntityType.BOLD,
+        MessageEntityType.ITALIC,
+        MessageEntityType.UNDERLINE,
+        MessageEntityType.STRIKETHROUGH,
+        MessageEntityType.CODE,
+        MessageEntityType.PRE,
+        MessageEntityType.SPOILER,
+        MessageEntityType.MENTION,
+        MessageEntityType.TEXT_LINK,
+        MessageEntityType.TEXT_MENTION,
+        MessageEntityType.CUSTOM_EMOJI,
+      ):
+        breakpoints.append(Breakpoint("start", entity.offset, entity))
+        breakpoints.append(Breakpoint("end", entity.offset + entity.length, entity))
   for i, ch in enumerate(text):
     if ch == "\n":
       breakpoints.append(Breakpoint("start", i, None))
@@ -161,23 +162,34 @@ def parse_message_sender(me: TGUser, message: Message) -> User:
   raise ValueError("Message has no sender.")
 
 
-def parse_message(me: TGUser, message: Message) -> MessageObject:
-  elements = []
+def parse_elements(me: TGUser, message: Message) -> list[Element]:
+  elements = list[Element]()
 
   if message.reply_to_message and not (
     message.topic_message and message.reply_to_message.forum_topic_created
   ):
-    quote_message = parse_message(me, message.reply_to_message)
+    if message.quote:
+      quote_message = parse_text(message.quote.text, message.quote.entities)
+    else:
+      quote_message = parse_elements(me, message.reply_to_message)
     quote_user = parse_message_sender(me, message.reply_to_message)
-    quote_elements = list[str | Element]()
+    quote_elements = list[Element]()
     quote_elements.append(Author(quote_user.id, quote_user.name, quote_user.avatar))
-    quote_elements.extend(quote_message.content)
-    elements.append(Quote(str(message.reply_to_message.id), content=quote_elements))
+    quote_elements.extend(quote_message)
+    if (
+      message.chat
+      and message.reply_to_message.chat
+      and message.chat.id != message.reply_to_message.chat.id
+    ):
+      id = f"{message.reply_to_message.chat.id}:{message.reply_to_message.id}"
+    else:
+      id = str(message.reply_to_message.id)
+    elements.append(Quote(id, content=quote_elements))
 
   elements.extend(
     parse_text(
       message.text or message.caption or "",
-      message.entities or message.caption_entities or [],
+      message.entities or message.caption_entities,
     )
   )
 
@@ -215,6 +227,10 @@ def parse_message(me: TGUser, message: Message) -> MessageObject:
       Audio(f"internal:{PLATFORM}/{me.id}/{message.audio.file_id}", message.audio.file_name)
     )
 
+  return elements
+
+
+def parse_message(me: TGUser, message: Message) -> MessageObject:
   if not message.chat:
     raise ValueError("Message has no chat.")
 
@@ -222,5 +238,12 @@ def parse_message(me: TGUser, message: Message) -> MessageObject:
   user = parse_message_sender(me, message)
 
   return MessageObject.from_elements(
-    str(message.id), elements, channel, guild, None, user, message.date, message.edit_date
+    str(message.id),
+    parse_elements(me, message),
+    channel,
+    guild,
+    None,
+    user,
+    message.date,
+    message.edit_date,
   )

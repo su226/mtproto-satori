@@ -192,10 +192,14 @@ class MTProtoAdapter(Adapter):
   async def _route_message_get(self, request: Request[MessageOpParam]) -> MessageObject:
     if not self.client or not self.me:
       raise ValueError("Client not started")
-    message = await self.client.get_messages(
-      int(request.params["channel_id"]),
-      int(request.params["message_id"]),
-    )
+    split_id = request.params["message_id"].split(":", 1)
+    if len(split_id) == 2:
+      channel_id = int(split_id[0])
+      message_id = int(split_id[1])
+    else:
+      channel_id = int(request.params["channel_id"])
+      message_id = int(split_id[0])
+    message = await self.client.get_messages(channel_id, message_id)
     if not message:
       raise ValueError("Message not exist.")
     return parse_message(self.me.tg, message)
@@ -205,7 +209,7 @@ class MTProtoAdapter(Adapter):
       raise ValueError("Client not started")
     await update_message(
       self.client,
-      int(request.params["channel_id"]),
+      int(request.params["channel_id"].split(":", 1)[0]),
       int(request.params["message_id"]),
       request.params["content"],
     )
