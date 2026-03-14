@@ -101,7 +101,7 @@ Methods not usable by bots are **UNTESTED**, since I only use this on bots, use 
 - [ ] login-removed
 - [ ] login-updated
 - [x] message-created
-- [ ] message-updated
+- [x] message-updated
 - [ ] message-deleted
 - [ ] reaction-added
 - [ ] reaction-removed

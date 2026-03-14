@@ -166,6 +166,23 @@ class MTProtoAdapter(Adapter):
     )
     await self.queue.put(event)
 
+  async def _on_edited_message(self, client: Client, message: Message) -> None:
+    if not self.me:
+      raise ValueError("Client is not fully initalized.")
+    content = parse_message(self.me.tg, message)
+    if not message.edit_date:
+      raise ValueError("Message has no date.")
+    event = Event(
+      EventType.MESSAGE_UPDATED,
+      message.edit_date,
+      self.me.satori,
+      channel=content.channel,
+      guild=content.guild,
+      message=content,
+      user=content.user,
+    )
+    await self.queue.put(event)
+
   async def _on_callback_query(self, client: Client, callback: CallbackQuery) -> None:
     if not self.me:
       raise ValueError("Client is not fully initalized.")
@@ -364,6 +381,7 @@ class MTProtoAdapter(Adapter):
         workdir=Path.cwd(),
       )
       self.client.on_message()(self._on_message)
+      self.client.on_edited_message()(self._on_edited_message)
       self.client.on_callback_query()(self._on_callback_query)
 
     async with self.stage("blocking"):
