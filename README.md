@@ -37,18 +37,20 @@ Start with `uv run mtproto-satori`.
 
 ### API
 
+Methods not usable by bots are **UNTESTED**, since I only use this on bots, use at your own risk.
+
 - [x] channel.get
-- [ ] channel.list
+- [ ] channel.list (Not usable by bots)
 - [ ] channel.create
 - [ ] channel.update
 - [ ] channel.delete
-- [ ] channel.mute
-- [ ] friend.list
-- [ ] friend.delete
-- [ ] friend.approve
+- [ ] channel.mute (Not supported in Telegram)
+- [ ] friend.list (Not usable by bots)
+- [ ] friend.delete (Not usable by bots)
+- [ ] friend.approve (Not usable by bots)
 - [x] guild.get
-- [ ] guild.list
-- [ ] guild.approve
+- [ ] guild.list (Not usable by bots)
+- [ ] guild.approve (Not usable by bots)
 - [x] guild.member.get
 - [x] guild.member.list
 - [ ] guild.member.kick
@@ -57,14 +59,15 @@ Start with `uv run mtproto-satori`.
 - [ ] guild.member.role.set
 - [ ] guild.member.role.unset
 - [ ] guild.role.list
-- [ ] guild.role.create
-- [ ] guild.role.update
-- [ ] guild.role.delete
+- [ ] guild.role.create (Not supported in Telegram)
+- [ ] guild.role.update (Not supported in Telegram)
+- [ ] guild.role.delete (Not supported in Telegram)
 - [x] login.get
 - [x] message.create
 - [x] message.get
+- [x] message.delete
 - [x] message.update
-- [ ] message.list
+- [ ] message.list (Not usable by bots)
 - [ ] reaction.create
 - [ ] reaction.delete
 - [ ] reaction.clear
@@ -89,9 +92,9 @@ Start with `uv run mtproto-satori`.
 - [ ] guild-member-updated
 - [ ] guild-member-removed
 - [ ] guild-member-request
-- [ ] guild-role-created
-- [ ] guild-role-updated
-- [ ] guild-role-deleted
+- [ ] guild-role-created (Not supported in Telegram)
+- [ ] guild-role-updated (Not supported in Telegram)
+- [ ] guild-role-deleted (Not supported in Telegram)
 - [x] interaction/button
 - [ ] interaction/command
 - [x] login-added

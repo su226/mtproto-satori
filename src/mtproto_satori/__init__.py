@@ -111,6 +111,7 @@ class MTProtoAdapter(Adapter):
     self.route(Api.USER_CHANNEL_CREATE)(self._route_user_channel_create)
     self.route(Api.MESSAGE_CREATE)(self._route_message_create)
     self.route(Api.MESSAGE_GET)(self._route_message_get)
+    self.route(Api.MESSAGE_DELETE)(self._route_message_delete)
     self.route(Api.MESSAGE_UPDATE)(self._route_message_update)
 
   @property
@@ -327,6 +328,18 @@ class MTProtoAdapter(Adapter):
     if not message:
       raise ValueError("Message not exist.")
     return parse_message(self.me.tg, message)
+
+  async def _route_message_delete(self, request: Request[MessageOpParam]) -> None:
+    if not self.client or not self.me:
+      raise ValueError("Client not started")
+    channel_id, message_id = await resolve_channel_message_id(
+      self.client,
+      request.params["channel_id"],
+      request.params["message_id"],
+    )
+    count = await self.client.delete_messages(channel_id, message_id)
+    if not count:
+      raise ValueError("Message not exist.")
 
   async def _route_message_update(self, request: Request[MessageUpdateParam]) -> None:
     if not self.client or not self.me:
