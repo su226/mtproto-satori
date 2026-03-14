@@ -1,4 +1,6 @@
+from pyrogram.client import Client
 from pyrogram.enums import ChatType
+from pyrogram.raw.types import InputPeerChannel, InputPeerChat, InputPeerUser
 from pyrogram.types import Chat
 from pyrogram.types import User as TGUser
 from satori.model import Channel, ChannelType, Guild, User
@@ -49,3 +51,45 @@ def parse_guild_channel(
     )
     channel = Channel(f"{chat.id}:{thread_id}" if thread_id else str(chat.id))
   return guild, channel
+
+
+async def resolve_peer(client: Client, guild_id: str) -> int:
+  try:
+    chat_id = int(guild_id)
+  except ValueError:
+    peer = await client.resolve_peer(guild_id)
+    if isinstance(peer, InputPeerUser):
+      chat_id = peer.user_id
+    elif isinstance(peer, InputPeerChat):
+      chat_id = -peer.chat_id
+    elif isinstance(peer, InputPeerChannel):
+      chat_id = -(1000000000000 + peer.channel_id)
+    else:
+      raise ValueError("Cannot resolve peer")
+  return chat_id
+
+
+async def resolve_channel_id(client: Client, channel_id: str) -> tuple[int, int | None]:
+  split_id = channel_id.split(":", 1)
+  if len(split_id) == 2:
+    chat_id = await resolve_peer(client, split_id[0])
+    thread_id = int(split_id[1])
+  else:
+    chat_id = await resolve_peer(client, split_id[0])
+    thread_id = None
+  return chat_id, thread_id
+
+
+async def resolve_channel_message_id(
+  client: Client,
+  channel_id: str,
+  message_id: str,
+) -> tuple[int, int]:
+  split_id = message_id.split(":", 1)
+  if len(split_id) == 2:
+    channel_id = int(split_id[0])
+    message_id = int(split_id[1])
+  else:
+    channel_id, _ = await resolve_channel_id(client, channel_id)
+    message_id = int(split_id[0])
+  return channel_id, message_id

@@ -37,7 +37,7 @@ Start with `uv run mtproto-satori`.
 
 ### API
 
-- [ ] channel.get
+- [x] channel.get
 - [ ] channel.list
 - [ ] channel.create
 - [ ] channel.update
@@ -137,3 +137,19 @@ Start with `uv run mtproto-satori`.
 - [x] image
 - [x] location (Receive only)
 - [x] pre / code-block
+
+## Implementation details
+
+Input user ID: A username or [bot API dialog ID](https://core.telegram.org/api/bots/ids). You can get "user" info from supergroups/channels since supergroups/channels can act like anonymous users.
+
+Output user ID: A [bot API dialog ID](https://core.telegram.org/api/bots/ids). Usernames will be resolved.
+
+Input channel ID: "xxxxxx" for users/groups/supergroups without threads/channels, "xxxxxx:yyy" for supergroups with threads, where "xxxxxx" is a username or [bot API dialog ID](https://core.telegram.org/api/bots/ids), and "yyy" is a [message (thread) ID](https://core.telegram.org/api/threads).
+
+Output channel ID: "xxxxxx" for users/groups/supergroups without threads/channels, "xxxxxx:yyy" for supergroups with threads, where "xxxxxx" is a [bot API dialog ID](https://core.telegram.org/api/bots/ids) (usernames will be resolved), and "yyy" is a [message (thread) ID](https://core.telegram.org/api/threads).
+
+Input guild ID: A username or [bot API dialog ID](https://core.telegram.org/api/bots/ids), excpet users have no guild.
+
+Output guild ID: A [bot API dialog ID](https://core.telegram.org/api/bots/ids), usernames will be resolved, excpet users have no guild.
+
+Message ID: "yyy" for messages quoted from same chat, "xxxxxx:yyy" for messages quoted from different chat. `message.get` will automatically use chat id in message id if exists.

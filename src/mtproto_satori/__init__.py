@@ -9,6 +9,9 @@ from launart import Launart
 from launart.status import Phase
 from pyrogram.client import Client
 from pyrogram.file_id import FileId
+from pyrogram.raw.types.input_peer_channel import InputPeerChannel
+from pyrogram.raw.types.input_peer_chat import InputPeerChat
+from pyrogram.raw.types.input_peer_user import InputPeerUser
 from pyrogram.types import CallbackQuery, Message
 from pyrogram.types import User as TGUser
 from satori import EventType
@@ -25,6 +28,7 @@ from satori.model import (
 from satori.server import Adapter, Api
 from satori.server.model import Request
 from satori.server.route import (
+  ChannelParam,
   MessageOpParam,
   MessageParam,
   MessageUpdateParam,
@@ -36,7 +40,13 @@ from starlette.responses import Response, StreamingResponse
 from mtproto_satori.const import ADAPTER, PLATFORM
 from mtproto_satori.message_receive import parse_message
 from mtproto_satori.message_send import send_message, update_message
-from mtproto_satori.user import parse_user
+from mtproto_satori.user import (
+  parse_sender_chat,
+  parse_user,
+  resolve_channel_id,
+  resolve_channel_message_id,
+  resolve_peer,
+)
 
 
 class Proxy(TypedDict):
@@ -76,6 +86,7 @@ class MTProtoAdapter(Adapter):
     self.client: Client | None = None
     self.me: Me | None = None
     self.media_groups = dict[int, tuple[datetime, list[Message]]]()
+    self.route(Api.CHANNEL_GET)(self._route_channel_get)
     self.route(Api.LOGIN_GET)(self._route_login_get)
     self.route(Api.USER_GET)(self._route_user_get)
     self.route(Api.USER_CHANNEL_CREATE)(self._route_user_channel_create)
@@ -156,6 +167,21 @@ class MTProtoAdapter(Adapter):
     await self.queue.put(event)
     await callback.answer()
 
+  async def _route_channel_get(self, request: Request[ChannelParam]) -> Channel:
+    if not self.client or not self.me:
+      raise ValueError("Client not started")
+    chat_id, thread_id = await resolve_channel_id(self.client, request.params["channel_id"])
+    if chat_id > 0:
+      channel_id = str(chat_id)
+      channel_type = ChannelType.DIRECT
+    elif thread_id:
+      channel_id = f"{chat_id}:{thread_id}"
+      channel_type = ChannelType.TEXT
+    else:
+      channel_id = str(chat_id)
+      channel_type = ChannelType.TEXT
+    return Channel(channel_id, channel_type)
+
   async def _route_login_get(self, request: Request[Any]) -> Login:
     if not self.client or not self.me:
       raise ValueError("Client not started")
@@ -165,22 +191,26 @@ class MTProtoAdapter(Adapter):
   async def _route_user_get(self, request: Request[UserOpParam]) -> User:
     if not self.client or not self.me:
       raise ValueError("Client not started")
-    user = cast(TGUser, await self.client.get_users(request.params["user_id"]))
-    return parse_user(self.me.tg.id, user)
+    user_id = await resolve_peer(self.client, request.params["user_id"])
+    if -1000000000000 < user_id < 0:
+      raise ValueError(
+        "Only supergroups/channels can act like anonymous users, not regular groups."
+      )
+    chat = await self.client.get_chat(user_id)
+    return parse_sender_chat(self.me.tg.id, chat)
 
   async def _route_user_channel_create(self, request: Request[UserChannelCreateParam]) -> Channel:
-    return Channel(request.params["user_id"], ChannelType.DIRECT)
+    if not self.client or not self.me:
+      raise ValueError("Client not started")
+    user_id = await resolve_peer(self.client, request.params["user_id"])
+    if user_id < 0:
+      raise ValueError("Not a user")
+    return Channel(str(user_id), ChannelType.DIRECT)
 
   async def _route_message_create(self, request: Request[MessageParam]) -> list[MessageObject]:
     if not self.client or not self.me:
       raise ValueError("Client not started")
-    split_id = request.params["channel_id"].split(":", 1)
-    if len(split_id) == 2:
-      channel_id = int(split_id[0])
-      thread_id = int(split_id[1])
-    else:
-      channel_id = int(split_id[0])
-      thread_id = None
+    channel_id, thread_id = await resolve_channel_id(self.client, request.params["channel_id"])
     return await send_message(
       self.client,
       self.me.tg,
@@ -192,13 +222,11 @@ class MTProtoAdapter(Adapter):
   async def _route_message_get(self, request: Request[MessageOpParam]) -> MessageObject:
     if not self.client or not self.me:
       raise ValueError("Client not started")
-    split_id = request.params["message_id"].split(":", 1)
-    if len(split_id) == 2:
-      channel_id = int(split_id[0])
-      message_id = int(split_id[1])
-    else:
-      channel_id = int(request.params["channel_id"])
-      message_id = int(split_id[0])
+    channel_id, message_id = await resolve_channel_message_id(
+      self.client,
+      request.params["channel_id"],
+      request.params["message_id"],
+    )
     message = await self.client.get_messages(channel_id, message_id)
     if not message:
       raise ValueError("Message not exist.")
@@ -207,12 +235,12 @@ class MTProtoAdapter(Adapter):
   async def _route_message_update(self, request: Request[MessageUpdateParam]) -> None:
     if not self.client or not self.me:
       raise ValueError("Client not started")
-    await update_message(
+    channel_id, message_id = await resolve_channel_message_id(
       self.client,
-      int(request.params["channel_id"].split(":", 1)[0]),
-      int(request.params["message_id"]),
-      request.params["content"],
+      request.params["channel_id"],
+      request.params["message_id"],
     )
+    await update_message(self.client, channel_id, message_id, request.params["content"])
 
   async def launch(self, manager: Launart) -> None:
     async with self.stage("preparing"):
