@@ -2,15 +2,17 @@ import base64
 import mimetypes
 import re
 from collections.abc import Iterable
-from dataclasses import dataclass
 from io import BytesIO
 from itertools import chain
 from pathlib import Path
-from typing import Literal, cast
+from tempfile import TemporaryFile
+from typing import Any, BinaryIO, Literal, cast
 
 import aiohttp
+import puremagic
 from graia.amnesia.builtins.aiohttp import AiohttpClientService
 from launart import Launart
+from PIL import Image
 from pyrogram.client import Client
 from pyrogram.enums import ParseMode
 from pyrogram.types import (
@@ -31,14 +33,6 @@ from yarl import URL
 
 from mtproto_satori.message_receive import parse_message
 
-
-@dataclass
-class DownloadedFile:
-  filename: str
-  data: bytes
-  mime: str
-
-
 BASE64_HEADER = re.compile(r"^data:([\w/.+-]+);base64,")
 _aiohttp: aiohttp.ClientSession | None = None
 
@@ -47,7 +41,7 @@ def get_aiohttp() -> aiohttp.ClientSession:
   try:
     manager = Launart.current()
     client = manager.get_component(AiohttpClientService).session
-  except (LookupError, ValueError):
+  except LookupError, ValueError:
     global _aiohttp
     if not _aiohttp:
       _aiohttp = aiohttp.ClientSession()
@@ -55,30 +49,114 @@ def get_aiohttp() -> aiohttp.ClientSession:
   return client
 
 
-async def get_file(url: str, name: str, timeout: int) -> DownloadedFile:
+async def get_media(url: str, name: str, timeout: float) -> BinaryIO:
   if match := BASE64_HEADER.match(url):
-    mime = match[1]
     data = base64.b64decode(BASE64_HEADER.sub("", url))
     if not name:
-      ext = mimetypes.guess_extension(mime) or ".bin"
+      try:
+        ext = puremagic.from_string(data)
+      except puremagic.PureError:
+        ext = mimetypes.guess_extension(match[1]) or ".bin"
       name = "file" + ext
+    file = BytesIO(data)
+    file.name = name
   elif url.startswith("file:"):
     path = Path.from_uri(url)
-    mime = mimetypes.guess_file_type(path)[0] or "application/octet-stream"
-    with path.open("rb") as f:
-      data = f.read()
-    if not name:
-      name = path.name
+    file = path.open("rb")
+    if name:
+      cast(Any, file.raw).name = name
   else:
     parsed = URL(url)
     client = get_aiohttp()
+    Path("files").mkdir(exist_ok=True, parents=True)
+    file = TemporaryFile(dir="files")
     async with client.get(parsed) as response:
-      data = await response.read()
-    mime = response.headers.get("Content-Type", "application/octet-stream")
-    mime = re.split(r"[;,]", mime, 1)[0]
+      async for chunk in response.content.iter_any():
+        file.write(chunk)
     if not name:
       name = parsed.name
-  return DownloadedFile(name, data, mime)
+    file.name = name
+  return file
+
+
+def image_mime_valid(mime: str) -> bool:
+  return mime in ("image/jpeg", "image/png", "image/gif")
+
+
+async def get_image(url: str, name: str, timeout: float) -> tuple[BinaryIO, str]:
+  Path("files").mkdir(exist_ok=True, parents=True)
+  if match := BASE64_HEADER.match(url):
+    data = base64.b64decode(BASE64_HEADER.sub("", url))
+    if magic := puremagic.magic_string(data):
+      magic = max(magic)
+      mime = magic.mime_type
+      ext = magic.extension
+    else:
+      mime = match[1]
+      ext = mimetypes.guess_extension(mime) or ".bin"
+    file = BytesIO(data)
+    if not image_mime_valid(mime):
+      im = Image.open(file)
+      file = BytesIO()
+      im.save(file, "PNG")
+      mime = "image/png"
+      ext = ".png"
+    if name:
+      if not name.endswith(ext):
+        name += ext
+    else:
+      name = "file" + ext
+    file.name = name
+  elif url.startswith("file:"):
+    path = Path.from_uri(url)
+    if magic := puremagic.magic_file(path):
+      magic = max(magic)
+      mime = magic.mime_type
+      ext = magic.extension
+    else:
+      mime = "application/octet-stream"
+      ext = ".bin"
+    if image_mime_valid(mime):
+      file = path.open("rb")
+    else:
+      file = TemporaryFile(dir="files")
+      im = Image.open(path)
+      im.save(file, "PNG")
+      mime = "image/png"
+      ext = ".png"
+    if not name:
+      name = path.name
+    if not name.endswith(ext):
+      name += ext
+    if isinstance(file, BytesIO):
+      file.name = name
+    else:
+      cast(Any, file.raw).name = name
+  else:
+    parsed = URL(url)
+    file = TemporaryFile(dir="files")
+    async with get_aiohttp().get(parsed) as response:
+      async for chunk in response.content.iter_any():
+        file.write(chunk)
+    file.seek(0)
+    if magic := puremagic.magic_stream(file):
+      magic = max(magic)
+      mime = magic.mime_type
+      ext = magic.extension
+    else:
+      mime = "application/octet-stream"
+      ext = ".bin"
+    if not image_mime_valid(mime):
+      im = Image.open(file)
+      im.save(file, "PNG")
+      mime = "image/png"
+      ext = ".png"
+    if not name:
+      name = parsed.name
+    if not name.endswith(ext):
+      name += ext
+    cast(Any, file.raw).name = name
+  return file, mime
 
 
 InputMediaNotAnimation = InputMediaAudio | InputMediaDocument | InputMediaPhoto | InputMediaVideo
@@ -260,26 +338,26 @@ class SendMessageEncoder(MessageEncoder):
       animations = list[InputMediaAnimation]()
       others = list[InputMediaNotAnimation]()
       for i, element in enumerate(self.asset):
-        file = await get_file(
-          element.attrs.get("src") or element.attrs["url"],
-          element.attrs.get("title", ""),
-          int(element.attrs.get("timeout", 0)),
-        )
-        data = BytesIO(file.data)
-        data.name = file.filename
-        if file.mime == "image/gif":
-          animations.append(InputMediaAnimation(data, has_spoiler="spoiler" in element.attrs))
-        elif element.type in ("img", "image"):
-          ext = mimetypes.guess_extension(file.mime) or ".bin"
-          if not data.name.endswith(ext):
-            data.name += ext
-          others.append(InputMediaPhoto(data, has_spoiler="spoiler" in element.attrs))
+        src = element.attrs.get("src") or element.attrs["url"]
+        title = element.attrs.get("title", "")
+        timeout = float(element.attrs.get("timeout", 0))
+        if element.type in ("img", "image"):
+          file, mime = await get_image(src, title, timeout)
+          spoiler = "spoiler" in element.attrs
+          if mime == "image/gif":
+            animations.append(InputMediaAnimation(file, has_spoiler=spoiler))
+          else:
+            others.append(InputMediaPhoto(file, has_spoiler=spoiler))
         elif element.type == "audio":
-          others.append(InputMediaAudio(data))
+          file = await get_media(src, title, timeout)
+          others.append(InputMediaAudio(file))
         elif element.type == "video":
-          others.append(InputMediaVideo(data, has_spoiler="spoiler" in element.attrs))
+          file = await get_media(src, title, timeout)
+          spoiler = "spoiler" in element.attrs
+          others.append(InputMediaVideo(file, has_spoiler=spoiler))
         elif element.type == "file":
-          others.append(InputMediaDocument(data))
+          file = await get_media(src, title, timeout)
+          others.append(InputMediaDocument(file))
 
       results = list[Message]()
 
