@@ -11,5 +11,6 @@ wheels/
 
 /config.json
 /start.sh
-/session.session
-/session.session-journal
+/files_*
+/*.session
+/*.session-journal

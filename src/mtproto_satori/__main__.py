@@ -16,7 +16,6 @@ def main() -> None:
   )
   server.apply(
     MTProtoAdapter(
-      "session",
       config["api_id"],
       config["api_hash"],
       config.get("phone", ""),

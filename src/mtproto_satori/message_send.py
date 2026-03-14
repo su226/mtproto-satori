@@ -49,7 +49,7 @@ def get_aiohttp() -> aiohttp.ClientSession:
   return client
 
 
-async def get_media(url: str, name: str, timeout: float) -> BinaryIO:
+async def get_media(session_name: str, url: str, name: str, timeout: float) -> BinaryIO:
   if match := BASE64_HEADER.match(url):
     data = base64.b64decode(BASE64_HEADER.sub("", url))
     if not name:
@@ -68,8 +68,9 @@ async def get_media(url: str, name: str, timeout: float) -> BinaryIO:
   else:
     parsed = URL(url)
     client = get_aiohttp()
-    Path("files").mkdir(exist_ok=True, parents=True)
-    file = TemporaryFile(dir="files")
+    dir = Path(f"files_{session_name}")
+    dir.mkdir(exist_ok=True, parents=True)
+    file = TemporaryFile(dir=dir)
     async with client.get(parsed) as response:
       async for chunk in response.content.iter_any():
         file.write(chunk)
@@ -83,8 +84,14 @@ def image_mime_valid(mime: str) -> bool:
   return mime in ("image/jpeg", "image/png", "image/gif")
 
 
-async def get_image(url: str, name: str, timeout: float) -> tuple[BinaryIO, str]:
-  Path("files").mkdir(exist_ok=True, parents=True)
+async def get_image(
+  session_name: str,
+  url: str,
+  name: str,
+  timeout: float,
+) -> tuple[BinaryIO, str]:
+  dir = Path(f"files_{session_name}")
+  dir.mkdir(exist_ok=True, parents=True)
   if match := BASE64_HEADER.match(url):
     data = base64.b64decode(BASE64_HEADER.sub("", url))
     if magic := puremagic.magic_string(data):
@@ -119,7 +126,7 @@ async def get_image(url: str, name: str, timeout: float) -> tuple[BinaryIO, str]
     if image_mime_valid(mime):
       file = path.open("rb")
     else:
-      file = TemporaryFile(dir="files")
+      file = TemporaryFile(dir=dir)
       im = Image.open(path)
       im.save(file, "PNG")
       mime = "image/png"
@@ -134,7 +141,7 @@ async def get_image(url: str, name: str, timeout: float) -> tuple[BinaryIO, str]
       cast(Any, file.raw).name = name
   else:
     parsed = URL(url)
-    file = TemporaryFile(dir="files")
+    file = TemporaryFile(dir=dir)
     async with get_aiohttp().get(parsed) as response:
       async for chunk in response.content.iter_any():
         file.write(chunk)
@@ -342,21 +349,21 @@ class SendMessageEncoder(MessageEncoder):
         title = element.attrs.get("title", "")
         timeout = float(element.attrs.get("timeout", 0))
         if element.type in ("img", "image"):
-          file, mime = await get_image(src, title, timeout)
+          file, mime = await get_image(self.client.name, src, title, timeout)
           spoiler = "spoiler" in element.attrs
           if mime == "image/gif":
             animations.append(InputMediaAnimation(file, has_spoiler=spoiler))
           else:
             others.append(InputMediaPhoto(file, has_spoiler=spoiler))
         elif element.type == "audio":
-          file = await get_media(src, title, timeout)
+          file = await get_media(self.client.name, src, title, timeout)
           others.append(InputMediaAudio(file))
         elif element.type == "video":
-          file = await get_media(src, title, timeout)
+          file = await get_media(self.client.name, src, title, timeout)
           spoiler = "spoiler" in element.attrs
           others.append(InputMediaVideo(file, has_spoiler=spoiler))
         elif element.type == "file":
-          file = await get_media(src, title, timeout)
+          file = await get_media(self.client.name, src, title, timeout)
           others.append(InputMediaDocument(file))
 
       results = list[Message]()

@@ -1,4 +1,5 @@
 import asyncio
+import re
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from datetime import datetime
@@ -82,7 +83,6 @@ class Me:
 class MTProtoAdapter(Adapter):
   def __init__(
     self,
-    name: str,
     api_id: int,
     api_hash: str,
     phone: str = "",
@@ -92,13 +92,16 @@ class MTProtoAdapter(Adapter):
   ):
     super().__init__()
     self.queue = asyncio.Queue[Event]()
-    self.name = name
     self.api_id = api_id
     self.api_hash = api_hash
     self.proxy = proxy
     self.phone = phone
     self.password = password
     self.bot_token = bot_token
+    if bot_token:
+      self.session_name = "bot_" + bot_token.split(":", 1)[0]
+    else:
+      self.session_name = "user_" + re.sub(r"[+()\s-]", "", phone)
     self.client: Client | None = None
     self.me: Me | None = None
     self.media_groups = dict[int, tuple[datetime, list[Message]]]()
@@ -371,7 +374,7 @@ class MTProtoAdapter(Adapter):
   async def launch(self, manager: Launart) -> None:
     async with self.stage("preparing"):
       self.client = Client(
-        self.name,
+        self.session_name,
         self.api_id,
         self.api_hash,
         proxy=cast(dict, self.proxy),
