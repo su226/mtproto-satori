@@ -6,27 +6,64 @@ A [Satori](https://satori.chat) implementation based on MTProto using [Kurigram]
 
 Obtain your `api_id` and `api_hash` at <https://my.telegram.org>.
 
-Create `config.json`. (Do NOT include comments.)
+Create `config.toml`.
 
-```jsonc
-{
-  "host": "127.0.0.1", // Optional, defaults to "127.0.0.1"
-  "port": 5140, // Optional, defaults to 5140
-  "path": "/satori", // Optional, defaults to ""
-  "token": "", // Optional, defaults to ""
-  "api_id": 12345, // Required, example value here won't work
-  "api_hash": "0123456789abcdef0123456789abcdef", // Required, example value here won't work
-  "phone": "", // Either phone or bot_token is required
-  "password": "", // Required if your account has 2FA
-  "bot_token": "", // Either phone or bot_token is required
-  "proxy": { // Optional
-    "scheme": "socks5", // "http", "socks4" or "socks5"
-    "hostname": "127.0.0.1",
-    "port": 1234,
-    "username": "username", // Optional
-    "password": "password" // Optional
-  }
-}
+```toml
+host = "127.0.0.1"
+# Optional, defaults to "127.0.0.1"
+
+port = 5140
+# Optional, defaults to 5140
+
+path = "/satori"
+# Optional, defaults to ""
+
+token = "0123456789abcdef"
+# Optional, defaults to ""
+
+api_id = 12345
+# Required, example value here won't work
+
+api_hash = "0123456789abcdef0123456789abcdef"
+# Required, example value here won't work
+
+phone = ""
+# Either phone or bot_token is required
+
+password = ""
+# Required if your account has 2FA
+
+bot_token = ""
+# Either phone or bot_token is required
+
+[proxy]
+# Optional
+
+scheme = "socks5"
+# Required, "http", "socks4" or "socks5"
+
+hostname = "127.0.0.1"
+# Required
+
+port = 1234
+# Required
+
+username = "username"
+# Optional
+
+password = "password"
+# Optional
+
+[merge_media_groups]
+# Optional
+# Whethre to merge media group when...
+
+receive = 0.1
+# Optional, defaults to 0.1(s).
+# When receive messages, wait for a period to fully receive media groups.
+# Higher value means higher latency when receiving media groups.
+# If media groups are incomplete, try increase it.
+# Set to 0 to disable.
 ```
 
 Install dependencies with `uv sync`.

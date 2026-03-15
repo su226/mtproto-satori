@@ -90,6 +90,8 @@ class MTProtoAdapter(Adapter):
     password: str = "",
     bot_token: str = "",
     proxy: Proxy | None = None,
+    *,
+    merge_media_groups_receive: float = 0.1,
   ):
     super().__init__()
     self.queue = asyncio.Queue[Event]()
@@ -106,6 +108,7 @@ class MTProtoAdapter(Adapter):
     self.client: Client | None = None
     self.me: Me | None = None
     self.storage = SqliteStorage(self.session_name)
+    self.merge_media_groups_receive = merge_media_groups_receive
     self.media_groups = dict[int, tuple[datetime, list[Message]]]()
     self.route(Api.CHANNEL_GET)(self._route_channel_get)
     self.route(Api.GUILD_GET)(self._route_guild_get)
@@ -130,7 +133,7 @@ class MTProtoAdapter(Adapter):
   async def _on_message(self, client: Client, message: Message) -> None:
     if not self.me:
       raise ValueError("Client is not fully initalized.")
-    if message.media_group_id:
+    if self.merge_media_groups_receive > 0 and message.media_group_id:
       if message.media_group_id in self.media_groups:
         _, messages = self.media_groups[message.media_group_id]
       else:
@@ -138,7 +141,7 @@ class MTProtoAdapter(Adapter):
       now = datetime.now()
       messages.append(message)
       self.media_groups[message.media_group_id] = (now, messages)
-      await asyncio.sleep(1.2)
+      await asyncio.sleep(self.merge_media_groups_receive)
       time, _ = self.media_groups[message.media_group_id]
       if time != now:
         return

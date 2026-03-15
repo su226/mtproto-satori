@@ -9,9 +9,9 @@ wheels/
 # Virtual environments
 .venv
 
-/config.json
+/config.toml
 /start.sh
-/files_*
+/files_*/
 /storage_*.db
 /*.session
 /*.session-journal

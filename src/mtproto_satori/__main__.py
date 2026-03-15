@@ -1,4 +1,4 @@
-import json
+import tomllib
 
 from satori.server import Server
 
@@ -6,14 +6,15 @@ from mtproto_satori import MTProtoAdapter
 
 
 def main() -> None:
-  with open("config.json") as f:
-    config = json.load(f)
+  with open("config.toml", "rb") as f:
+    config = tomllib.load(f)
   server = Server(
     config.get("host", "127.0.0.1"),
     config.get("port", 5140),
     config.get("path", ""),
     token=config.get("token", ""),
   )
+  merge_media_groups = config.get("merge_media_groups", {})
   server.apply(
     MTProtoAdapter(
       config["api_id"],
@@ -22,6 +23,7 @@ def main() -> None:
       config.get("password", ""),
       config.get("bot_token", ""),
       config.get("proxy", None),
+      merge_media_groups_receive=merge_media_groups.get("receive", 0.1),
     )
   )
   server.run()
