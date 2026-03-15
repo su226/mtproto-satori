@@ -53,8 +53,9 @@ from satori.server.route import (
 from starlette.responses import Response, StreamingResponse
 
 from mtproto_satori.const import ADAPTER, PLATFORM
-from mtproto_satori.message_receive import parse_message
+from mtproto_satori.message_receive import parse_elements, parse_message
 from mtproto_satori.message_send import send_message, update_message
+from mtproto_satori.storage import SqliteStorage, StoredMessage
 from mtproto_satori.user import (
   parse_guild,
   parse_member,
@@ -104,6 +105,7 @@ class MTProtoAdapter(Adapter):
       self.session_name = "user_" + re.sub(r"[+()\s-]", "", phone)
     self.client: Client | None = None
     self.me: Me | None = None
+    self.storage = SqliteStorage(self.session_name)
     self.media_groups = dict[int, tuple[datetime, list[Message]]]()
     self.route(Api.CHANNEL_GET)(self._route_channel_get)
     self.route(Api.GUILD_GET)(self._route_guild_get)
@@ -143,48 +145,80 @@ class MTProtoAdapter(Adapter):
       del self.media_groups[message.media_group_id]
       messages.sort(key=lambda update: update.id)
       message = messages[0]
-      contents = [parse_message(self.me.tg, message) for message in messages]
-      content = MessageObject(
-        contents[0].id,
-        "".join(message.content for message in contents),
-        contents[0].channel,
-        contents[0].guild,
-        None,
-        contents[0].user,
-        contents[0].created_at,
-        contents[0].updated_at,
+      parsed = parse_message(self.me.tg, message)
+      await self.storage.put_message(
+        StoredMessage.from_message(self.me.tg.id, message, parsed.content)
       )
+      for add_message in messages[1:]:
+        add_content = "".join(str(element) for element in parse_elements(self.me.tg, add_message))
+        parsed.content += add_content
+        await self.storage.put_message(
+          StoredMessage.from_message(self.me.tg.id, add_message, add_content)
+        )
     else:
-      content = parse_message(self.me.tg, message)
+      parsed = parse_message(self.me.tg, message)
+      await self.storage.put_message(
+        StoredMessage.from_message(self.me.tg.id, message, parsed.content)
+      )
     if not message.date:
       raise ValueError("Message has no date.")
     event = Event(
       EventType.MESSAGE_CREATED,
       message.date,
       self.me.satori,
-      channel=content.channel,
-      guild=content.guild,
-      message=content,
-      user=content.user,
+      channel=parsed.channel,
+      guild=parsed.guild,
+      message=parsed,
+      user=parsed.user,
     )
     await self.queue.put(event)
 
   async def _on_edited_message(self, client: Client, message: Message) -> None:
     if not self.me:
       raise ValueError("Client is not fully initalized.")
-    content = parse_message(self.me.tg, message)
+    parsed = parse_message(self.me.tg, message)
+    await self.storage.put_message(
+      StoredMessage.from_message(self.me.tg.id, message, parsed.content)
+    )
     if not message.edit_date:
       raise ValueError("Message has no date.")
     event = Event(
       EventType.MESSAGE_UPDATED,
       message.edit_date,
       self.me.satori,
-      channel=content.channel,
-      guild=content.guild,
-      message=content,
-      user=content.user,
+      channel=parsed.channel,
+      guild=parsed.guild,
+      message=parsed,
+      user=parsed.user,
     )
     await self.queue.put(event)
+
+  async def _on_deleted_messages(self, client: Client, messages: list[Message]) -> None:
+    if not self.me:
+      raise ValueError("Client is not fully initalized.")
+    now = datetime.now()
+    for message in messages:
+      try:
+        if message.chat and message.chat.id:
+          stored = await self.storage.get_channel_message(message.chat.id, message.id)
+        else:
+          stored = await self.storage.get_message(message.id)
+      except KeyError:
+        continue
+      event = Event(
+        EventType.MESSAGE_DELETED,
+        now,
+        self.me.satori,
+        channel=Channel(
+          f"{stored.chat_id}:{stored.thread_id}" if stored.thread_id else str(stored.chat_id),
+          ChannelType.TEXT if stored.chat_id < 0 else ChannelType.DIRECT,
+        ),
+        guild=Guild(str(stored.chat_id)) if stored.chat_id < 0 else None,
+        message=MessageObject(str(stored.message_id)),
+        user=User(str(stored.user_id)),
+      )
+      await self.queue.put(event)
+      await self.storage.del_message(stored)
 
   async def _on_callback_query(self, client: Client, callback: CallbackQuery) -> None:
     if not self.me:
@@ -385,7 +419,9 @@ class MTProtoAdapter(Adapter):
       )
       self.client.on_message()(self._on_message)
       self.client.on_edited_message()(self._on_edited_message)
+      self.client.on_deleted_messages()(self._on_deleted_messages)
       self.client.on_callback_query()(self._on_callback_query)
+      await self.storage.open()
 
     async with self.stage("blocking"):
       await self.client.start()
@@ -400,6 +436,7 @@ class MTProtoAdapter(Adapter):
       await manager.status.wait_for_sigexit()
 
     async with self.stage("cleanup"):
+      await self.storage.close()
       self.me = None
       await self.client.stop()
       self.client = None

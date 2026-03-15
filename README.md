@@ -102,9 +102,11 @@ Methods not usable by bots are **UNTESTED**, since I only use this on bots, use 
 - [ ] login-updated
 - [x] message-created
 - [x] message-updated
-- [ ] message-deleted
+- [x] message-deleted (Limited on bots)[^1]
 - [ ] reaction-added
 - [ ] reaction-removed
+
+[^1]: Bots can only receive message-deleted in direct messages and (regular) groups, not supergroups or channels.
 
 ### Element
 
