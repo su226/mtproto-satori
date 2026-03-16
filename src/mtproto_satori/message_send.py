@@ -2,6 +2,7 @@ import base64
 import mimetypes
 import re
 from collections.abc import Iterable
+from dataclasses import dataclass, field
 from io import BytesIO
 from itertools import chain
 from pathlib import Path
@@ -169,13 +170,19 @@ async def get_image(
 InputMediaNotAnimation = InputMediaAudio | InputMediaDocument | InputMediaPhoto | InputMediaVideo
 
 
+@dataclass
+class MessagePack:
+  content: str = ""
+  asset: list[Element] = field(default_factory=list)
+  reply: str = ""
+  rows: list[list[InlineKeyboardButton]] = field(default_factory=list)
+
+
 class MessageEncoder:
   def __init__(self, emojis: dict[int, Sticker], users: dict[int | str, User]) -> None:
-    self.content = ""
-    self.asset = list[Element]()
+    self.current = MessagePack()
+    self.packs = list[MessagePack]()
     self.mode: Literal["figure", "default"] = "default"
-    self.reply = ""
-    self.rows = list[list[InlineKeyboardButton]]()
     self.emojis = emojis
     self.users = users
 
@@ -192,48 +199,48 @@ class MessageEncoder:
         return full_name
     return None
 
-  async def visit(self, element: Element) -> None:
+  def visit(self, element: Element) -> None:
     if element.type == "text":
-      self.content += escape(element.attrs["text"])
+      self.current.content += escape(element.attrs.get("text") or "")
     elif element.type == "br":
-      self.content += "\n"
+      self.current.content += "\n"
     elif element.type == "p":
-      if not self.content.endswith("\n"):
-        self.content += "\n"
-      await self.render(element.children)
-      if not self.content.endswith("\n"):
-        self.content += "\n"
+      if not self.current.content.endswith("\n"):
+        self.current.content += "\n"
+      self.render(element.children)
+      if not self.current.content.endswith("\n"):
+        self.current.content += "\n"
     elif element.type == "a":
       if href := element.attrs.get("href"):
         attrs = f' href="{escape(href, True)}"'
       else:
         attrs = ""
-      self.content += f"<a{attrs}>"
-      await self.render(element.children)
-      self.content += "</a>"
+      self.current.content += f"<a{attrs}>"
+      self.render(element.children)
+      self.current.content += "</a>"
     elif element.type in ("b", "strong", "i", "em", "u", "ins", "s", "del"):
-      self.content += f"<{element.type}>"
-      await self.render(element.children)
-      self.content += f"</{element.type}>"
+      self.current.content += f"<{element.type}>"
+      self.render(element.children)
+      self.current.content += f"</{element.type}>"
     elif element.type == "spl":
-      self.content += "<tg-spoiler>"
-      await self.render(element.children)
-      self.content += "</tg-spoiler>"
+      self.current.content += "<tg-spoiler>"
+      self.render(element.children)
+      self.current.content += "</tg-spoiler>"
     elif element.type == "code":
-      self.content += "<code>"
+      self.current.content += "<code>"
       if "content" in element.attrs:
-        self.content += escape(element.attrs["content"])
+        self.current.content += escape(element.attrs["content"])
       else:
-        await self.render(element.children)
-      self.content += "</code>"
+        self.render(element.children)
+      self.current.content += "</code>"
     elif element.type in ("pre", "code-block"):
       if lang := element.attrs.get("lang"):
         attrs = f' class="language-{escape(lang, True)}"'
       else:
         attrs = ""
-      self.content += f"<pre><code{attrs}>"
-      await self.render(element.children)
-      self.content += "</code></pre>"
+      self.current.content += f"<pre><code{attrs}>"
+      self.render(element.children)
+      self.current.content += "</code></pre>"
     elif element.type == "at":
       if id := element.attrs.get("id"):
         try:
@@ -243,39 +250,39 @@ class MessageEncoder:
           username = id.removeprefix("@")
           id = user.id if (user := self.users.get(username)) else escape(f"@{username}", True)
           display = element.attrs.get("name") or f"@{username}"
-          self.content += f'<a href="tg://user?id={id}">{escape(display)}</a>'
+          self.current.content += f'<a href="tg://user?id={id}">{escape(display)}</a>'
         else:
           # ID 代表用户 ID，使用 name 指定的名字，没有再获取
           display = element.attrs.get("name") or self._get_user_name(id) or "User"
-          self.content += f'<a href="tg://user?id={id}">{escape(display)}</a>'
+          self.current.content += f'<a href="tg://user?id={id}">{escape(display)}</a>'
     elif element.type == "emoji":
       if id := element.attrs.get("id"):
         id = int(id)
         name = element.attrs.get("name") or self._get_emoji_name(id) or "😀"
-        self.content += f'<tg-emoji emoji-id="{id}">{escape(name)}</tg-emoji>'
+        self.current.content += f'<tg-emoji emoji-id="{id}">{escape(name)}</tg-emoji>'
     elif element.type in ("img", "image", "audio", "video", "file"):
-      self.asset.append(element)
+      self.current.asset.append(element)
     elif element.type == "figure":
-      await self.flush()
+      self.flush()
       self.mode = "figure"
-      await self.render(element.children)
-      await self.flush()
+      self.render(element.children)
+      self.flush()
       self.mode = "default"
     elif element.type == "quote":
       if "id" in element.attrs:
-        await self.flush()
+        self.flush()
         self.reply = element.attrs["id"]
       else:
-        self.content += "<blockquote>"
-        await self.render(element.children)
-        self.content += "</blockquote>"
+        self.current.content += "<blockquote>"
+        self.render(element.children)
+        self.current.content += "</blockquote>"
     elif element.type == "button":
-      if not self.rows:
-        self.rows.append([])
-      row = self.rows[-1]
+      if not self.current.rows:
+        self.current.rows.append([])
+      row = self.current.rows[-1]
       if len(row) >= 5:
         row = []
-        self.rows.append(row)
+        self.current.rows.append(row)
       label = element.dumps(True)
       if element.attrs["type"] == "link":
         button = InlineKeyboardButton(
@@ -294,146 +301,31 @@ class MessageEncoder:
         )
       row.append(button)
     elif element.type == "button-group":
-      self.rows.append([])
-      await self.render(element.children)
-      self.rows.append([])
+      self.current.rows.append([])
+      self.render(element.children)
+      self.current.rows.append([])
     elif element.type == "message":
       if self.mode == "figure":
-        await self.render(element.children)
-        self.content += "\n"
+        self.render(element.children)
+        self.current.content += "\n"
       else:
-        await self.flush()
-        await self.render(element.children)
-        await self.flush()
+        self.flush()
+        self.render(element.children)
+        self.flush()
     else:
-      await self.render(element.children)
+      self.render(element.children)
 
-  async def flush(self) -> None:
-    pass
-
-  async def render(self, elements: list[Element]) -> None:
-    for element in elements:
-      await self.visit(element)
-
-
-class SendMessageEncoder(MessageEncoder):
-  def __init__(
-    self,
-    client: Client,
-    me: User,
-    channel_id: int,
-    thread_id: int | None,
-    emojis: dict[int, Sticker],
-    users: dict[int | str, User],
-  ) -> None:
-    super().__init__(emojis, users)
-    self.result = list[MessageObject]()
-    self.client = client
-    self.me = me
-    self.channel_id = channel_id
-    self.thread_id = thread_id
-
-  def add_result(self, result: Message) -> None:
-    self.result.append(parse_message(self.me, result))
-
-  async def flush(self) -> None:
-    if not (self.content or self.asset):
+  def flush(self) -> None:
+    if not (self.current.content or self.current.asset):
       return
-    if self.rows and not self.rows[-1]:
-      self.rows.pop()
-    if self.asset:
-      animations = list[InputMediaAnimation]()
-      others = list[InputMediaNotAnimation]()
-      for i, element in enumerate(self.asset):
-        src = element.attrs.get("src") or element.attrs["url"]
-        title = element.attrs.get("title", "")
-        timeout = float(element.attrs.get("timeout", 0))
-        if element.type in ("img", "image"):
-          file, mime = await get_image(self.client.name, src, title, timeout)
-          spoiler = "spoiler" in element.attrs
-          if mime == "image/gif":
-            animations.append(InputMediaAnimation(file, has_spoiler=spoiler))
-          else:
-            others.append(InputMediaPhoto(file, has_spoiler=spoiler))
-        elif element.type == "audio":
-          file = await get_media(self.client.name, src, title, timeout)
-          others.append(InputMediaAudio(file))
-        elif element.type == "video":
-          file = await get_media(self.client.name, src, title, timeout)
-          spoiler = "spoiler" in element.attrs
-          others.append(InputMediaVideo(file, has_spoiler=spoiler))
-        elif element.type == "file":
-          file = await get_media(self.client.name, src, title, timeout)
-          others.append(InputMediaDocument(file))
+    if self.current.rows and not self.current.rows[-1]:
+      self.current.rows.pop()
+    self.packs.append(self.current)
+    self.current = MessagePack()
 
-      results = list[Message]()
-
-      has_buttons = self.rows and self.rows[0]
-      if not has_buttons:
-        if others:
-          others[0].caption = self.content
-          others[0].parse_mode = cast(str, ParseMode.HTML)
-        else:
-          animations[0].caption = self.content
-          animations[0].parse_mode = cast(str, ParseMode.HTML)
-
-      if others:
-        result = await self.client.send_media_group(
-          self.channel_id,
-          others,
-          reply_to_message_id=int(self.reply) if self.reply else cast(int, None),
-          message_thread_id=cast(int, self.thread_id),
-        )
-        results.extend(result)
-
-      for file in animations:
-        if results:
-          reply = results[0].id
-        elif self.reply:
-          reply = int(self.reply)
-        else:
-          reply = cast(int, None)
-        result = await self.client.send_animation(
-          self.channel_id,
-          file.media,
-          file.caption,
-          parse_mode=ParseMode.HTML,
-          has_spoiler=file.has_spoiler,
-          reply_to_message_id=reply,
-          message_thread_id=cast(int, self.thread_id),
-        )
-        results.append(cast(Message, result))
-
-      if has_buttons:
-        results.append(
-          await self.client.send_message(
-            self.channel_id,
-            self.content,
-            ParseMode.HTML,
-            reply_to_message_id=results[0].id,
-            reply_markup=InlineKeyboardMarkup(self.rows),
-            message_thread_id=cast(int, self.thread_id),
-          )
-        )
-
-      for result in results:
-        self.add_result(result)
-    else:
-      result = await self.client.send_message(
-        self.channel_id,
-        self.content,
-        ParseMode.HTML,
-        reply_to_message_id=int(self.reply) if self.reply else cast(int, None),
-        message_thread_id=cast(int, self.thread_id),
-        reply_markup=InlineKeyboardMarkup(self.rows)
-        if self.rows and self.rows[0]
-        else cast(InlineKeyboardMarkup, None),
-      )
-      self.add_result(result)
-    self.reply = None
-    self.content = ""
-    self.rows = []
-    self.asset = []
+  def render(self, elements: list[Element]) -> None:
+    for element in elements:
+      self.visit(element)
 
 
 def extract_emojis_without_name(element: Element | Iterable[Element]) -> set[int]:
@@ -498,10 +390,102 @@ async def send_message(
   elements = parse(message)
   emojis = await fetch_emojis(client, extract_emojis_without_name(elements))
   users = await fetch_users(client, extract_users_without_id_or_name(elements))
-  encoder = SendMessageEncoder(client, me, channel_id, thread_id, emojis, users)
-  await encoder.render(elements)
-  await encoder.flush()
-  return encoder.result
+  encoder = MessageEncoder(emojis, users)
+  encoder.render(elements)
+  encoder.flush()
+
+  all_results = list[Message]()
+  for pack in encoder.packs:
+    if pack.asset:
+      animations = list[InputMediaAnimation]()
+      others = list[InputMediaNotAnimation]()
+      for element in pack.asset:
+        src = element.attrs.get("src") or element.attrs["url"]
+        title = element.attrs.get("title", "")
+        timeout = float(element.attrs.get("timeout") or 0)
+        if element.type in ("img", "image"):
+          file, mime = await get_image(client.name, src, title, timeout)
+          spoiler = "spoiler" in element.attrs
+          if mime == "image/gif":
+            animations.append(InputMediaAnimation(file, has_spoiler=spoiler))
+          else:
+            others.append(InputMediaPhoto(file, has_spoiler=spoiler))
+        elif element.type == "audio":
+          file = await get_media(client.name, src, title, timeout)
+          others.append(InputMediaAudio(file))
+        elif element.type == "video":
+          file = await get_media(client.name, src, title, timeout)
+          spoiler = "spoiler" in element.attrs
+          others.append(InputMediaVideo(file, has_spoiler=spoiler))
+        elif element.type == "file":
+          file = await get_media(client.name, src, title, timeout)
+          others.append(InputMediaDocument(file))
+
+      results = list[Message]()
+
+      has_buttons = pack.rows and pack.rows[0]
+      if not has_buttons:
+        if others:
+          others[0].caption = pack.content
+          others[0].parse_mode = cast(str, ParseMode.HTML)
+        else:
+          animations[0].caption = pack.content
+          animations[0].parse_mode = cast(str, ParseMode.HTML)
+
+      if others:
+        result = await client.send_media_group(
+          channel_id,
+          others,
+          reply_to_message_id=int(pack.reply) if pack.reply else cast(int, None),
+          message_thread_id=cast(int, thread_id),
+        )
+        results.extend(result)
+
+      for file in animations:
+        if results:
+          reply = results[0].id
+        elif pack.reply:
+          reply = int(pack.reply)
+        else:
+          reply = cast(int, None)
+        result = await client.send_animation(
+          channel_id,
+          file.media,
+          file.caption,
+          parse_mode=ParseMode.HTML,
+          has_spoiler=file.has_spoiler,
+          reply_to_message_id=reply,
+          message_thread_id=cast(int, thread_id),
+        )
+        results.append(cast(Message, result))
+
+      if has_buttons:
+        results.append(
+          await client.send_message(
+            channel_id,
+            pack.content,
+            ParseMode.HTML,
+            reply_to_message_id=results[0].id,
+            reply_markup=InlineKeyboardMarkup(pack.rows),
+            message_thread_id=cast(int, thread_id),
+          )
+        )
+
+      all_results.extend(results)
+    else:
+      result = await client.send_message(
+        channel_id,
+        pack.content,
+        ParseMode.HTML,
+        reply_to_message_id=int(pack.reply) if pack.reply else cast(int, None),
+        message_thread_id=cast(int, thread_id),
+        reply_markup=InlineKeyboardMarkup(pack.rows)
+        if pack.rows and pack.rows[0]
+        else cast(InlineKeyboardMarkup, None),
+      )
+      all_results.append(result)
+
+  return [parse_message(me, message) for message in all_results]
 
 
 async def update_message(
@@ -514,13 +498,16 @@ async def update_message(
   emojis = await fetch_emojis(client, extract_emojis_without_name(elements))
   users = await fetch_users(client, extract_users_without_id_or_name(elements))
   encoder = MessageEncoder(emojis, users)
-  await encoder.render(elements)
+  encoder.render(elements)
+  encoder.flush()
+
+  buttons = list(chain.from_iterable(pack.rows for pack in encoder.packs))
   await client.edit_message_text(
     channel_id,
     message_id,
-    encoder.content,
+    "".join(pack.content for pack in encoder.packs),
     ParseMode.HTML,
-    reply_markup=InlineKeyboardMarkup(encoder.rows)
-    if encoder.rows and encoder.rows[0]
+    reply_markup=InlineKeyboardMarkup(buttons)
+    if buttons and buttons[0]
     else cast(InlineKeyboardMarkup, None),
   )
