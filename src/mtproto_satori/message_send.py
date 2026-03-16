@@ -136,10 +136,7 @@ async def get_image(
       name = path.name
     if not name.endswith(ext):
       name += ext
-    if isinstance(file, BytesIO):
-      file.name = name
-    else:
-      cast(Any, file.raw).name = name
+    cast(Any, file.raw).name = name
   else:
     parsed = URL(url)
     file = TemporaryFile(dir=dir)
@@ -242,12 +239,12 @@ class MessageEncoder:
       self.render(element.children)
       self.current.content += "</code></pre>"
     elif element.type == "at":
-      if id := element.attrs.get("id"):
+      if id_or_name := element.attrs.get("id"):
         try:
-          id = int(id)
+          id = int(id_or_name)
         except ValueError:
           # ID 代表用户名，始终获取用户 ID，用户名不存在就瞎填一个 ID
-          username = id.removeprefix("@")
+          username = id_or_name.removeprefix("@")
           id = user.id if (user := self.users.get(username)) else escape(f"@{username}", True)
           display = element.attrs.get("name") or f"@{username}"
           self.current.content += f'<a href="tg://user?id={id}">{escape(display)}</a>'
@@ -357,15 +354,15 @@ async def fetch_emojis(client: Client, emojis: set[int]) -> dict[int, Sticker]:
 def extract_users_without_id_or_name(element: Element | Iterable[Element]) -> set[int | str]:
   if isinstance(element, Element):
     if element.type == "at":
-      if user_id := element.attrs.get("id"):
+      if id_or_name := element.attrs.get("id"):
         try:
-          user_id = int(user_id)
+          id = int(id_or_name)
         except ValueError:
           # 当 ID 代表用户名时，获取所有用户
-          return {user_id.removeprefix("@")}
+          return {id_or_name.removeprefix("@")}
         else:
           # 当 ID 代表用户 ID 时，只获取未指定 name 的用户
-          return {user_id} if not element.attrs.get("name") else set()
+          return {id} if not element.attrs.get("name") else set()
       return set()
     element = element.children
   return set(chain.from_iterable(extract_users_without_id_or_name(element) for element in element))

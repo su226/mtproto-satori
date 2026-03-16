@@ -168,12 +168,12 @@ def parse_elements(me: TGUser, message: Message) -> list[Element]:
   if message.reply_to_message and not (
     message.topic_message and message.reply_to_message.forum_topic_created
   ):
-    if message.quote:
+    if message.quote and message.quote.text:
       quote_message = parse_text(message.quote.text, message.quote.entities)
     else:
       quote_message = parse_elements(me, message.reply_to_message)
     quote_user = parse_message_sender(me, message.reply_to_message)
-    quote_elements = list[Element]()
+    quote_elements = list[str | Element]()
     quote_elements.append(Author(quote_user.id, quote_user.name, quote_user.avatar))
     quote_elements.extend(quote_message)
     if (

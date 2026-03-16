@@ -99,9 +99,9 @@ async def resolve_channel_message_id(
 ) -> tuple[int, int]:
   split_id = message_id.split(":", 1)
   if len(split_id) == 2:
-    channel_id = int(split_id[0])
-    message_id = int(split_id[1])
+    parsed_channel_id = int(split_id[0])
+    parsed_message_id = int(split_id[1])
   else:
-    channel_id, _ = await resolve_channel_id(client, channel_id)
-    message_id = int(split_id[0])
-  return channel_id, message_id
+    parsed_channel_id, _ = await resolve_channel_id(client, channel_id)
+    parsed_message_id = int(split_id[0])
+  return parsed_channel_id, parsed_message_id
