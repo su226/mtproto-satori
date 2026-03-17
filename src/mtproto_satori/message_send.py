@@ -172,6 +172,7 @@ class MessagePack:
   content: str = ""
   asset: list[Element] = field(default_factory=list)
   reply: str = ""
+  forward: str = ""
   rows: list[list[InlineKeyboardButton]] = field(default_factory=list)
 
 
@@ -307,13 +308,16 @@ class MessageEncoder:
         self.current.content += "\n"
       else:
         self.flush()
-        self.render(element.children)
+        if element.attrs.get("forward") and (id := element.attrs.get("id")):
+          self.current.forward = id
+        else:
+          self.render(element.children)
         self.flush()
     else:
       self.render(element.children)
 
   def flush(self) -> None:
-    if not (self.current.content or self.current.asset):
+    if not (self.current.content or self.current.asset or self.current.forward):
       return
     if self.current.rows and not self.current.rows[-1]:
       self.current.rows.pop()
@@ -469,6 +473,24 @@ async def send_message(
         )
 
       all_results.extend(results)
+    elif pack.forward:
+      split_id = pack.forward.split(":", 1)
+      if len(split_id) == 2:
+        from_chat_id = int(split_id[0])
+        message_id = int(split_id[1])
+      else:
+        from_chat_id = channel_id
+        message_id = int(split_id[0])
+      result = cast(
+        Message,
+        await client.forward_messages(
+          channel_id,
+          from_chat_id,
+          message_id,
+          cast(int, thread_id),
+        ),
+      )
+      all_results.append(result)
     else:
       result = await client.send_message(
         channel_id,

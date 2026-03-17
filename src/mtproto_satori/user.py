@@ -1,6 +1,8 @@
 from pyrogram.client import Client
 from pyrogram.enums import ChatType
-from pyrogram.raw.types import InputPeerChannel, InputPeerChat, InputPeerUser
+from pyrogram.raw.types.input_peer_channel import InputPeerChannel
+from pyrogram.raw.types.input_peer_chat import InputPeerChat
+from pyrogram.raw.types.input_peer_user import InputPeerUser
 from pyrogram.types import Chat, ChatMember
 from pyrogram.types import User as TGUser
 from satori import Channel, ChannelType, Guild, Member, Role, User
