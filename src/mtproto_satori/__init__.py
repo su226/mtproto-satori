@@ -53,7 +53,7 @@ from satori.server.route import (
 from starlette.responses import Response, StreamingResponse
 
 from mtproto_satori.const import ADAPTER, PLATFORM
-from mtproto_satori.message_receive import parse_elements, parse_message
+from mtproto_satori.message_receive import is_my_command, parse_elements, parse_message
 from mtproto_satori.message_send import send_message, update_message
 from mtproto_satori.storage import SqliteStorage, StoredMessage
 from mtproto_satori.user import (
@@ -166,7 +166,9 @@ class MTProtoAdapter(Adapter):
     if not message.date:
       raise ValueError("Message has no date.")
     event = Event(
-      EventType.MESSAGE_CREATED,
+      EventType.INTERACTION_COMMAND
+      if is_my_command(message, self.me.tg)
+      else EventType.MESSAGE_CREATED,
       message.date,
       self.me.satori,
       channel=parsed.channel,

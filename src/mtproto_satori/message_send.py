@@ -240,12 +240,12 @@ class MessageEncoder:
       self.render(element.children)
       self.current.content += "</code></pre>"
     elif element.type == "at":
-      if id_or_name := element.attrs.get("id"):
+      if id_or_username := element.attrs.get("id"):
         try:
-          id = int(id_or_name)
+          id = int(id_or_username)
         except ValueError:
           # ID 代表用户名，始终获取用户 ID，用户名不存在就瞎填一个 ID
-          username = id_or_name.removeprefix("@")
+          username = id_or_username.removeprefix("@")
           id = user.id if (user := self.users.get(username)) else escape(f"@{username}", True)
           display = element.attrs.get("name") or f"@{username}"
           self.current.content += f'<a href="tg://user?id={id}">{escape(display)}</a>'
@@ -358,12 +358,12 @@ async def fetch_emojis(client: Client, emojis: set[int]) -> dict[int, Sticker]:
 def extract_users_without_id_or_name(element: Element | Iterable[Element]) -> set[int | str]:
   if isinstance(element, Element):
     if element.type == "at":
-      if id_or_name := element.attrs.get("id"):
+      if id_or_username := element.attrs.get("id"):
         try:
-          id = int(id_or_name)
+          id = int(id_or_username)
         except ValueError:
           # 当 ID 代表用户名时，获取所有用户
-          return {id_or_name.removeprefix("@")}
+          return {id_or_username.removeprefix("@")}
         else:
           # 当 ID 代表用户 ID 时，只获取未指定 name 的用户
           return {id} if not element.attrs.get("name") else set()

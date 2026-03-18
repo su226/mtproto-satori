@@ -247,3 +247,24 @@ def parse_message(me: TGUser, message: Message) -> MessageObject:
     message.date,
     message.edit_date,
   )
+
+
+def is_my_command(message: Message, user: TGUser) -> bool:
+  if not message.text or not message.entities or not user.is_bot:
+    return False
+  entity = message.entities[0]
+  if entity.type != MessageEntityType.BOT_COMMAND or entity.offset != 0:
+    return False
+  command = message.text[entity.offset : entity.offset + entity.length]
+  splited = command.split("@", 1)
+  if len(splited) < 2:
+    return True
+  command, bot = splited
+  if bot == user.username:
+    return True
+  if not user.usernames:
+    return False
+  for username in user.usernames:
+    if (username.editable or username.active) and username.username == bot:
+      return True
+  return False

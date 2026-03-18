@@ -133,7 +133,7 @@ Methods not usable by bots are **UNTESTED**, since I only use this on bots, use 
 - [ ] guild-role-updated (Not supported in Telegram)
 - [ ] guild-role-deleted (Not supported in Telegram)
 - [x] interaction/button
-- [ ] interaction/command
+- [x] interaction/command
 - [x] login-added
 - [ ] login-removed
 - [ ] login-updated
