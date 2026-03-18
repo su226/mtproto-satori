@@ -21,7 +21,7 @@ from pyrogram.raw.types.chat_participants_forbidden import ChatParticipantsForbi
 from pyrogram.raw.types.input_channel import InputChannel
 from pyrogram.raw.types.input_peer_channel import InputPeerChannel
 from pyrogram.raw.types.input_peer_chat import InputPeerChat
-from pyrogram.types import CallbackQuery, ChatMember, Message
+from pyrogram.types import CallbackQuery, ChatMember, ChatMemberUpdated, Message
 from pyrogram.types import User as TGUser
 from satori import (
   Api,
@@ -246,6 +246,34 @@ class MTProtoAdapter(Adapter):
     await self.queue.put(event)
     await callback.answer()
 
+  async def _on_chat_member_updated(self, client: Client, update: ChatMemberUpdated) -> None:
+    if not self.me:
+      raise ValueError("Client is not fully initalized.")
+    if update.old_chat_member:
+      guild = parse_guild(self.me.tg.id, update.chat)
+      member = parse_member(self.me.tg.id, update.old_chat_member)
+      event = Event(
+        EventType.GUILD_MEMBER_REMOVED,
+        update.date,
+        self.me.satori,
+        guild=guild,
+        member=member,
+        user=member.user,
+      )
+      await self.queue.put(event)
+    if update.new_chat_member:
+      guild = parse_guild(self.me.tg.id, update.chat)
+      member = parse_member(self.me.tg.id, update.new_chat_member)
+      event = Event(
+        EventType.GUILD_MEMBER_ADDED,
+        update.date,
+        self.me.satori,
+        guild=guild,
+        member=member,
+        user=member.user,
+      )
+      await self.queue.put(event)
+
   async def _route_channel_get(self, request: Request[ChannelParam]) -> Channel:
     if not self.client or not self.me:
       raise ValueError("Client not started")
@@ -426,6 +454,7 @@ class MTProtoAdapter(Adapter):
       self.client.on_edited_message()(self._on_edited_message)
       self.client.on_deleted_messages()(self._on_deleted_messages)
       self.client.on_callback_query()(self._on_callback_query)
+      self.client.on_chat_member_updated()(self._on_chat_member_updated)
       await self.storage.open()
 
     async with self.stage("blocking"):
