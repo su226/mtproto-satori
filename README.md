@@ -36,6 +36,13 @@ password = ""
 bot_token = ""
 # Either phone or bot_token is required
 
+ignore_automatic_forward_interval = 10
+# Optional, defaults to 10(s)
+# If bot is in both a channel and its linked group, channel messages will be received twice.
+# Once in the channel, and once again in the group.
+# Enable this option to ignore channel message in the group, or set to 0 to disable.
+# Not works when bot is only in one side.
+
 [proxy]
 # Optional
 
@@ -143,7 +150,7 @@ Methods not usable by bots are **UNTESTED**, since I only use this on bots, use 
 - [x] reaction-added ([Not usable by users](https://docs.kurigram.icu/api/decorators/#pyrogram.Client.on_message_reaction_count))
 - [x] reaction-removed ([Not usable by users](https://docs.kurigram.icu/api/decorators/#pyrogram.Client.on_message_reaction_count))
 
-[^1]: Bots can only receive message-deleted in direct messages and (regular) groups, not supergroups or channels.
+[^1]: Bots can only receive all message-deleted events in direct messages and (regular) groups. In supergroups, only message-deleted events related to the bot are received. (Like a "enforced" privacy mode) In channels, no message-deleted events can be received.
 
 ### Element
 

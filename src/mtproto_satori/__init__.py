@@ -9,6 +9,7 @@ from typing import Any, Literal, NotRequired, TypedDict, cast
 from launart import Launart
 from launart.status import Phase
 from pyrogram.client import Client
+from pyrogram.enums import ChatType
 from pyrogram.file_id import FileId
 from pyrogram.raw.functions.channels.get_participants import GetParticipants
 from pyrogram.raw.functions.messages.get_full_chat import GetFullChat
@@ -26,6 +27,7 @@ from pyrogram.types import (
   ChatMember,
   ChatMemberUpdated,
   Message,
+  MessageOriginChannel,
   MessageReactionCountUpdated,
   MessageReactionUpdated,
 )
@@ -107,6 +109,7 @@ class MTProtoAdapter(Adapter):
     bot_token: str = "",
     proxy: Proxy | None = None,
     *,
+    ignore_automatic_forward_interval: float = 10,
     merge_media_groups_receive: float = 0.1,
   ):
     super().__init__()
@@ -126,6 +129,8 @@ class MTProtoAdapter(Adapter):
     self.storage = SqliteStorage(self.session_name)
     self.merge_media_groups_receive = merge_media_groups_receive
     self.media_groups = dict[int, tuple[datetime, list[Message]]]()
+    self.ignore_automatic_forward_interval = ignore_automatic_forward_interval
+    self.ignore_automatic_forward_ids = dict[tuple[int, int], asyncio.Task]()
     self.route(Api.CHANNEL_GET)(self._route_channel_get)
     self.route(Api.GUILD_GET)(self._route_guild_get)
     self.route(Api.GUILD_MEMBER_GET)(self._route_guild_member_get)
@@ -145,6 +150,10 @@ class MTProtoAdapter(Adapter):
   @property
   def stages(self) -> set[Phase]:
     return {"preparing", "blocking", "cleanup"}
+
+  async def remove_ignore_automatic_forward(self, channel_id: int, message_id: int) -> None:
+    await asyncio.sleep(self.ignore_automatic_forward_interval)
+    del self.ignore_automatic_forward_ids[channel_id, message_id]
 
   async def _on_message(self, client: Client, message: Message) -> None:
     if not self.me:
@@ -179,6 +188,18 @@ class MTProtoAdapter(Adapter):
       await self.storage.put_message(
         StoredMessage.from_message(self.me.tg.id, message, parsed.content)
       )
+    if self.ignore_automatic_forward_interval > 0 and message.chat and message.chat.id:
+      if message.chat.type == ChatType.CHANNEL:
+        self.ignore_automatic_forward_ids[message.chat.id, message.id] = asyncio.create_task(
+          self.remove_ignore_automatic_forward(message.chat.id, message.id)
+        )
+      elif (
+        message.automatic_forward
+        and isinstance(message.forward_origin, MessageOriginChannel)
+        and (message.forward_origin.chat.id, message.forward_origin.message_id)
+        in self.ignore_automatic_forward_ids
+      ):
+        return
     if not message.date:
       raise ValueError("Message has no date.")
     event = Event(
