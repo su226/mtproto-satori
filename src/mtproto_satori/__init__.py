@@ -249,9 +249,24 @@ class MTProtoAdapter(Adapter):
   async def _on_chat_member_updated(self, client: Client, update: ChatMemberUpdated) -> None:
     if not self.me:
       raise ValueError("Client is not fully initalized.")
-    if update.old_chat_member:
+    if update.old_chat_member and update.new_chat_member:
+      guild = parse_guild(self.me.tg.id, update.chat)
+      member = parse_member(self.me.tg.id, update.new_chat_member)
+      operator = parse_user(self.me.tg.id, update.from_user)
+      event = Event(
+        EventType.GUILD_MEMBER_UPDATED,
+        update.date,
+        self.me.satori,
+        guild=guild,
+        member=member,
+        user=member.user,
+        operator=operator,
+      )
+      await self.queue.put(event)
+    elif update.old_chat_member:
       guild = parse_guild(self.me.tg.id, update.chat)
       member = parse_member(self.me.tg.id, update.old_chat_member)
+      operator = parse_user(self.me.tg.id, update.from_user)
       event = Event(
         EventType.GUILD_MEMBER_REMOVED,
         update.date,
@@ -259,11 +274,13 @@ class MTProtoAdapter(Adapter):
         guild=guild,
         member=member,
         user=member.user,
+        operator=operator,
       )
       await self.queue.put(event)
-    if update.new_chat_member:
+    elif update.new_chat_member:
       guild = parse_guild(self.me.tg.id, update.chat)
       member = parse_member(self.me.tg.id, update.new_chat_member)
+      operator = parse_user(self.me.tg.id, update.from_user)
       event = Event(
         EventType.GUILD_MEMBER_ADDED,
         update.date,
@@ -271,6 +288,7 @@ class MTProtoAdapter(Adapter):
         guild=guild,
         member=member,
         user=member.user,
+        operator=operator,
       )
       await self.queue.put(event)
 

@@ -10,7 +10,7 @@ wheels/
 .venv
 
 /config.toml
-/start.sh
+/*.sh
 /files_*/
 /storage_*.db
 /*.session

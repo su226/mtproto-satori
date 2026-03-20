@@ -125,9 +125,9 @@ Methods not usable by bots are **UNTESTED**, since I only use this on bots, use 
 - [ ] guild-updated
 - [ ] guild-removed
 - [ ] guild-request
-- [ ] guild-member-added
-- [ ] guild-member-updated
-- [ ] guild-member-removed
+- [x] guild-member-added
+- [x] guild-member-updated
+- [x] guild-member-removed
 - [ ] guild-member-request
 - [ ] guild-role-created (Not supported in Telegram)
 - [ ] guild-role-updated (Not supported in Telegram)
