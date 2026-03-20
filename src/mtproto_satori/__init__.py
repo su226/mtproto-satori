@@ -2,7 +2,7 @@ import asyncio
 import re
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Literal, NotRequired, TypedDict, cast
 
@@ -54,6 +54,7 @@ from satori.server.route import (
   ChannelParam,
   GuildGetParam,
   GuildMemberGetParam,
+  GuildMemberKickParam,
   GuildXXXListParam,
   MessageOpParam,
   MessageParam,
@@ -135,6 +136,7 @@ class MTProtoAdapter(Adapter):
     self.route(Api.GUILD_GET)(self._route_guild_get)
     self.route(Api.GUILD_MEMBER_GET)(self._route_guild_member_get)
     self.route(Api.GUILD_MEMBER_LIST)(self._route_guild_member_list)
+    self.route(Api.GUILD_MEMBER_KICK)(self._route_guild_member_kick)
     self.route(Api.LOGIN_GET)(self._route_login_get)
     self.route(Api.USER_GET)(self._route_user_get)
     self.route(Api.USER_CHANNEL_CREATE)(self._route_user_channel_create)
@@ -505,6 +507,21 @@ class MTProtoAdapter(Adapter):
       )
     else:
       raise ValueError("Not a group or channel.")
+
+  async def _route_guild_member_kick(self, request: Request[GuildMemberKickParam]) -> None:
+    if not self.client or not self.me:
+      raise ValueError("Client not started")
+    chat_id = await resolve_peer(self.client, request.params["guild_id"])
+    user_id = await resolve_peer(self.client, request.params["user_id"])
+    if user_id == self.me.tg.id:
+      await self.client.leave_chat(chat_id)
+      return
+    if request.params.get("permanent", False):
+      await self.client.ban_chat_member(chat_id, user_id)
+      return
+    await self.client.ban_chat_member(chat_id, user_id, datetime.now() + timedelta(minutes=1))
+    if chat_id < -1000000000000:
+      await self.client.unban_chat_member(chat_id, user_id)
 
   async def _route_login_get(self, request: Request[Any]) -> Login:
     if not self.client or not self.me:

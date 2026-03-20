@@ -97,7 +97,7 @@ Methods not usable by bots are **UNTESTED**, since I only use this on bots, use 
 - [ ] guild.approve ([Not usable by bots](https://docs.kurigram.icu/api/methods/join_chat/#pyrogram.Client.join_chat))
 - [x] guild.member.get
 - [x] guild.member.list
-- [ ] guild.member.kick
+- [x] guild.member.kick
 - [ ] guild.member.mute
 - [ ] guild.member.approve
 - [ ] guild.member.role.set
