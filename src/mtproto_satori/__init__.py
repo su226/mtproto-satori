@@ -21,13 +21,21 @@ from pyrogram.raw.types.chat_participants_forbidden import ChatParticipantsForbi
 from pyrogram.raw.types.input_channel import InputChannel
 from pyrogram.raw.types.input_peer_channel import InputPeerChannel
 from pyrogram.raw.types.input_peer_chat import InputPeerChat
-from pyrogram.types import CallbackQuery, ChatMember, ChatMemberUpdated, Message
+from pyrogram.types import (
+  CallbackQuery,
+  ChatMember,
+  ChatMemberUpdated,
+  Message,
+  MessageReactionCountUpdated,
+  MessageReactionUpdated,
+)
 from pyrogram.types import User as TGUser
 from satori import (
   Api,
   ButtonInteraction,
   Channel,
   ChannelType,
+  EmojiObject,
   Event,
   EventType,
   Guild,
@@ -39,6 +47,7 @@ from satori import (
   User,
 )
 from satori.server import Adapter, Request
+from satori.server.adapter import LoginType
 from satori.server.route import (
   ChannelParam,
   GuildGetParam,
@@ -55,10 +64,17 @@ from starlette.responses import Response, StreamingResponse
 from mtproto_satori.const import ADAPTER, PLATFORM
 from mtproto_satori.message_receive import is_my_command, parse_elements, parse_message
 from mtproto_satori.message_send import send_message, update_message
-from mtproto_satori.storage import SqliteStorage, StoredMessage
+from mtproto_satori.storage import (
+  SqliteStorage,
+  StoredMessage,
+  StoredReactions,
+  serialize_reactions,
+)
 from mtproto_satori.user import (
   parse_guild,
+  parse_guild_channel,
   parse_member,
+  parse_reaction,
   parse_sender_chat,
   parse_user,
   resolve_channel_id,
@@ -182,6 +198,13 @@ class MTProtoAdapter(Adapter):
     if not self.me:
       raise ValueError("Client is not fully initalized.")
     parsed = parse_message(self.me.tg, message)
+    if message.chat and message.chat.id and message.chat.id < -1000000000000:
+      before = await self.storage.get_channel_message(message.chat.id, message.id)
+    else:
+      before = await self.storage.get_message(message.id)
+    if before and parsed.content == before.content:
+      # Message content unchanged, maybe something else changed like reactions?
+      return
     await self.storage.put_message(
       StoredMessage.from_message(self.me.tg.id, message, parsed.content)
     )
@@ -203,12 +226,11 @@ class MTProtoAdapter(Adapter):
       raise ValueError("Client is not fully initalized.")
     now = datetime.now()
     for message in messages:
-      try:
-        if message.chat and message.chat.id:
-          stored = await self.storage.get_channel_message(message.chat.id, message.id)
-        else:
-          stored = await self.storage.get_message(message.id)
-      except KeyError:
+      if message.chat and message.chat.id:
+        stored = await self.storage.get_channel_message(message.chat.id, message.id)
+      else:
+        stored = await self.storage.get_message(message.id)
+      if not stored:
         continue
       event = Event(
         EventType.MESSAGE_DELETED,
@@ -291,6 +313,85 @@ class MTProtoAdapter(Adapter):
         operator=operator,
       )
       await self.queue.put(event)
+
+  async def _on_message_reaction(self, client: Client, reaction: MessageReactionUpdated) -> None:
+    if not self.me:
+      raise ValueError("Client is not fully initalized.")
+    guild, channel = parse_guild_channel(self.me.tg.id, reaction.chat)
+    if reaction.actor_chat:
+      user = parse_sender_chat(self.me.tg.id, reaction.actor_chat)
+    elif reaction.user:
+      user = parse_user(self.me.tg.id, reaction.user)
+    else:
+      user = None
+    for emoji in reaction.old_reaction:
+      event = Event(
+        EventType.REACTION_REMOVED,
+        reaction.date,
+        self.me.satori,
+        channel=channel,
+        guild=guild,
+        message=MessageObject(id=str(reaction.message_id)),
+        user=user,
+        emoji=parse_reaction(emoji),
+      )
+      await self.queue.put(event)
+    for emoji in reaction.new_reaction:
+      event = Event(
+        EventType.REACTION_ADDED,
+        reaction.date,
+        self.me.satori,
+        channel=channel,
+        guild=guild,
+        message=MessageObject(id=str(reaction.message_id)),
+        user=user,
+        emoji=parse_reaction(emoji),
+      )
+      await self.queue.put(event)
+
+  async def _on_message_reaction_count(
+    self,
+    client: Client,
+    reaction: MessageReactionCountUpdated,
+  ) -> None:
+    if not self.me:
+      raise ValueError("Client is not fully initalized.")
+    if not reaction.chat.id:
+      raise ValueError("Reaction has no chat id.")
+    guild, channel = parse_guild_channel(self.me.tg.id, reaction.chat)
+    reactions = serialize_reactions(reaction.reactions)
+    old_reactions = await self.storage.get_reactions(reaction.chat.id, reaction.message_id)
+    await self.storage.put_reactions(reaction.chat.id, reaction.message_id, reactions)
+    diff = StoredReactions()
+    for id, count in reactions.items():
+      diff[id] = count - old_reactions.get(id, 0)
+    for id, old_count in old_reactions.items():
+      diff[id] = reactions.get(id, 0) - old_count
+    for id, diff in diff.items():
+      if diff > 0:
+        for _ in range(diff):
+          event = Event(
+            EventType.REACTION_ADDED,
+            reaction.date,
+            self.me.satori,
+            channel=channel,
+            guild=guild,
+            message=MessageObject(id=str(reaction.message_id)),
+            emoji=EmojiObject(id=id),
+          )
+          await self.queue.put(event)
+      elif diff < 0:
+        for _ in range(-diff):
+          event = Event(
+            EventType.REACTION_REMOVED,
+            reaction.date,
+            self.me.satori,
+            channel=channel,
+            guild=guild,
+            message=MessageObject(id=str(reaction.message_id)),
+            emoji=EmojiObject(id=id),
+          )
+          await self.queue.put(event)
 
   async def _route_channel_get(self, request: Request[ChannelParam]) -> Channel:
     if not self.client or not self.me:
@@ -413,13 +514,16 @@ class MTProtoAdapter(Adapter):
     if not self.client or not self.me:
       raise ValueError("Client not started")
     channel_id, thread_id = await resolve_channel_id(self.client, request.params["channel_id"])
-    return await send_message(
+    messages = await send_message(
       self.client,
       self.me.tg,
       channel_id,
       thread_id,
       request.params["content"],
     )
+    for tg, satori in messages:
+      await self.storage.put_message(StoredMessage.from_message(self.me.tg.id, tg, satori.content))
+    return [satori for _, satori in messages]
 
   async def _route_message_get(self, request: Request[MessageOpParam]) -> MessageObject:
     if not self.client or not self.me:
@@ -454,7 +558,14 @@ class MTProtoAdapter(Adapter):
       request.params["channel_id"],
       request.params["message_id"],
     )
-    await update_message(self.client, channel_id, message_id, request.params["content"])
+    tg, satori = await update_message(
+      self.client,
+      self.me.tg,
+      channel_id,
+      message_id,
+      request.params["content"],
+    )
+    await self.storage.put_message(StoredMessage.from_message(self.me.tg.id, tg, satori.content))
 
   async def launch(self, manager: Launart) -> None:
     async with self.stage("preparing"):
@@ -473,6 +584,8 @@ class MTProtoAdapter(Adapter):
       self.client.on_deleted_messages()(self._on_deleted_messages)
       self.client.on_callback_query()(self._on_callback_query)
       self.client.on_chat_member_updated()(self._on_chat_member_updated)
+      self.client.on_message_reaction()(self._on_message_reaction)
+      self.client.on_message_reaction_count()(self._on_message_reaction_count)
       await self.storage.open()
 
     async with self.stage("blocking"):
@@ -502,7 +615,7 @@ class MTProtoAdapter(Adapter):
       yield event
 
   def ensure(self, platform: str, self_id: str) -> bool:
-    return platform == PLATFORM and bool(self.me) and self_id == str(self.me.tg.id)
+    return platform == PLATFORM and bool(self.me and self_id == str(self.me.tg.id))
 
   async def handle_internal(self, request: Request, path: str) -> Response:
     file_id = FileId.decode(path)
@@ -516,7 +629,7 @@ class MTProtoAdapter(Adapter):
     self.me = Me(user, Login(0, LoginStatus.ONLINE, ADAPTER, PLATFORM, parse_user(user.id, user)))
     return self.me
 
-  async def get_logins(self) -> list[Login]:
+  async def get_logins(self) -> list[LoginType]:
     if not self.me:
       return []
     return [self.me.satori]

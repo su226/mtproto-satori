@@ -77,17 +77,17 @@ Start with `uv run mtproto-satori`.
 Methods not usable by bots are **UNTESTED**, since I only use this on bots, use at your own risk.
 
 - [x] channel.get
-- [ ] channel.list (Not usable by bots)
+- [ ] channel.list ([Not usable by bots](https://docs.kurigram.icu/api/methods/get_forum_topics/#pyrogram.Client.get_forum_topics))
 - [ ] channel.create
 - [ ] channel.update
 - [ ] channel.delete
 - [ ] channel.mute (Not supported in Telegram)
-- [ ] friend.list (Not usable by bots)
-- [ ] friend.delete (Not usable by bots)
-- [ ] friend.approve (Not usable by bots)
+- [ ] friend.list ([Not usable by bots](https://docs.kurigram.icu/api/methods/get_contacts/#pyrogram.Client.get_contacts))
+- [ ] friend.delete ([Not usable by bots](https://docs.kurigram.icu/api/methods/delete_contacts/#pyrogram.Client.delete_contacts))
+- [ ] friend.approve ([Not usable by bots](https://docs.kurigram.icu/api/methods/add_contact/#pyrogram.Client.add_contact))
 - [x] guild.get
-- [ ] guild.list (Not usable by bots)
-- [ ] guild.approve (Not usable by bots)
+- [ ] guild.list ([Not usable by bots](https://docs.kurigram.icu/api/methods/get_dialogs/#pyrogram.Client.get_dialogs))
+- [ ] guild.approve ([Not usable by bots](https://docs.kurigram.icu/api/methods/join_chat/#pyrogram.Client.join_chat))
 - [x] guild.member.get
 - [x] guild.member.list
 - [ ] guild.member.kick
@@ -104,7 +104,7 @@ Methods not usable by bots are **UNTESTED**, since I only use this on bots, use 
 - [x] message.get
 - [x] message.delete
 - [x] message.update
-- [ ] message.list (Not usable by bots)
+- [ ] message.list ([Not usable by bots](https://docs.kurigram.icu/api/methods/search_messages/#pyrogram.Client.search_messages))
 - [ ] reaction.create
 - [ ] reaction.delete
 - [ ] reaction.clear
@@ -125,23 +125,23 @@ Methods not usable by bots are **UNTESTED**, since I only use this on bots, use 
 - [ ] guild-updated
 - [ ] guild-removed
 - [ ] guild-request
-- [x] guild-member-added
-- [x] guild-member-updated
-- [x] guild-member-removed
-- [ ] guild-member-request
+- [x] guild-member-added ([Not usable by users](https://docs.kurigram.icu/api/decorators/#pyrogram.Client.on_chat_member_updated))
+- [x] guild-member-updated ([Not usable by users](https://docs.kurigram.icu/api/decorators/#pyrogram.Client.on_chat_member_updated))
+- [x] guild-member-removed ([Not usable by users](https://docs.kurigram.icu/api/decorators/#pyrogram.Client.on_chat_member_updated))
+- [ ] guild-member-request ([Not usable by users](https://docs.kurigram.icu/api/decorators/#pyrogram.Client.on_chat_join_request))
 - [ ] guild-role-created (Not supported in Telegram)
 - [ ] guild-role-updated (Not supported in Telegram)
 - [ ] guild-role-deleted (Not supported in Telegram)
 - [x] interaction/button
 - [x] interaction/command
 - [x] login-added
-- [ ] login-removed
-- [ ] login-updated
+- [ ] login-removed (Not supported in Kurigram)
+- [ ] login-updated (Not supported in Kurigram)
 - [x] message-created
 - [x] message-updated
 - [x] message-deleted (Limited on bots)[^1]
-- [ ] reaction-added
-- [ ] reaction-removed
+- [x] reaction-added ([Not usable by users](https://docs.kurigram.icu/api/decorators/#pyrogram.Client.on_message_reaction_count))
+- [x] reaction-removed ([Not usable by users](https://docs.kurigram.icu/api/decorators/#pyrogram.Client.on_message_reaction_count))
 
 [^1]: Bots can only receive message-deleted in direct messages and (regular) groups, not supergroups or channels.
 

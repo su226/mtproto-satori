@@ -308,8 +308,8 @@ class MessageEncoder:
         self.current.content += "\n"
       else:
         self.flush()
-        if element.attrs.get("forward") and (id := element.attrs.get("id")):
-          self.current.forward = id
+        if element.attrs.get("forward") and (forward_id := element.attrs.get("id")):
+          self.current.forward = forward_id
         else:
           self.render(element.children)
         self.flush()
@@ -387,7 +387,7 @@ async def send_message(
   channel_id: int,
   thread_id: int | None,
   message: str,
-) -> list[MessageObject]:
+) -> list[tuple[Message, MessageObject]]:
   elements = parse(message)
   emojis = await fetch_emojis(client, extract_emojis_without_name(elements))
   users = await fetch_users(client, extract_users_without_id_or_name(elements))
@@ -504,15 +504,16 @@ async def send_message(
       )
       all_results.append(result)
 
-  return [parse_message(me, message) for message in all_results]
+  return [(message, parse_message(me, message)) for message in all_results]
 
 
 async def update_message(
   client: Client,
+  me: User,
   channel_id: int,
   message_id: int,
   message: str,
-) -> None:
+) -> tuple[Message, MessageObject]:
   elements = parse(message)
   emojis = await fetch_emojis(client, extract_emojis_without_name(elements))
   users = await fetch_users(client, extract_users_without_id_or_name(elements))
@@ -521,7 +522,7 @@ async def update_message(
   encoder.flush()
 
   buttons = list(chain.from_iterable(pack.rows for pack in encoder.packs))
-  await client.edit_message_text(
+  result = await client.edit_message_text(
     channel_id,
     message_id,
     "".join(pack.content for pack in encoder.packs),
@@ -530,3 +531,4 @@ async def update_message(
     if buttons and buttons[0]
     else cast(InlineKeyboardMarkup, None),
   )
+  return (result, parse_message(me, result))

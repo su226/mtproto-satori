@@ -3,9 +3,9 @@ from pyrogram.enums import ChatType
 from pyrogram.raw.types.input_peer_channel import InputPeerChannel
 from pyrogram.raw.types.input_peer_chat import InputPeerChat
 from pyrogram.raw.types.input_peer_user import InputPeerUser
-from pyrogram.types import Chat, ChatMember
+from pyrogram.types import Chat, ChatMember, Reaction
 from pyrogram.types import User as TGUser
-from satori import Channel, ChannelType, Guild, Member, Role, User
+from satori import Channel, ChannelType, EmojiObject, Guild, Member, Role, User
 
 from mtproto_satori.const import PLATFORM
 
@@ -65,6 +65,16 @@ def parse_member(self_id: int, member: ChatMember) -> Member:
     joined_at=member.joined_date,
     roles=[Role(id=member.status.name.lower())],
   )
+
+
+def parse_reaction(reaction: Reaction) -> EmojiObject:
+  if reaction.emoji:
+    return EmojiObject(reaction.emoji)
+  if reaction.custom_emoji_id:
+    return EmojiObject(str(reaction.custom_emoji_id))
+  if reaction.is_paid:
+    return EmojiObject("paid")
+  raise ValueError("Invalid reaction.")
 
 
 async def resolve_peer(client: Client, guild_id: str) -> int:

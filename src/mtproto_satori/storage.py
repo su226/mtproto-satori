@@ -1,16 +1,26 @@
+import json
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Self
 
-from pyrogram.types import Message
+from pyrogram.types import Message, Reaction
 
-SCHEMA = """
+UPDATE_SCHEMA_1_TO_2 = """
+CREATE TABLE reactions(
+  chat_id INTEGER NOT NULL,
+  message_id INTEGER NOT NULL,
+  reactions TEXT NOT NULL,
+  PRIMARY KEY(chat_id, message_id)
+);
+"""
+
+SCHEMA = f"""
 CREATE TABLE metadata(
   version INTEGER
 );
 
-INSERT INTO metadata(version) VALUES (1);
+INSERT INTO metadata(version) VALUES (2);
 
 CREATE TABLE messages(
   chat_id INTEGER NOT NULL,
@@ -27,6 +37,8 @@ CREATE TABLE channel_messages(
   content TEXT NOT NULL,
   PRIMARY KEY(chat_id, message_id)
 );
+
+{UPDATE_SCHEMA_1_TO_2}
 """
 
 
@@ -56,6 +68,22 @@ class StoredMessage:
     return cls(chat_id, message.message_thread_id, message.id, user_id, content)
 
 
+StoredReactions = dict[str, int]
+
+
+def serialize_reactions(reactions: list[Reaction]) -> StoredReactions:
+  result = StoredReactions()
+  for reaction in reactions:
+    if reaction.count:
+      if reaction.emoji:
+        result[reaction.emoji] = reaction.count
+      if reaction.custom_emoji_id:
+        result[str(reaction.custom_emoji_id)] = reaction.count
+      if reaction.is_paid:
+        result["paid"] = reaction.count
+  return result
+
+
 class SqliteStorage:
   def __init__(self, session_name: str) -> None:
     self.session_name = session_name
@@ -67,11 +95,20 @@ class SqliteStorage:
     if not path_exists:
       with self.conn:
         self.conn.executescript(SCHEMA)
+    else:
+      await self.__upgrade()
+
+  async def __upgrade(self) -> None:
+    (version,) = self.conn.execute("SELECT version FROM metadata").fetchone()
+    if version == 1:
+      with self.conn:
+        self.conn.executescript(UPDATE_SCHEMA_1_TO_2)
+        self.conn.execute("UPDATE metadata SET version = 2")
 
   async def close(self) -> None:
     self.conn.close()
 
-  async def get_channel_message(self, chat_id: int, message_id: int) -> StoredMessage:
+  async def get_channel_message(self, chat_id: int, message_id: int) -> StoredMessage | None:
     result = self.conn.execute(
       """
       SELECT chat_id, thread_id, message_id, user_id, content FROM channel_messages
@@ -80,11 +117,11 @@ class SqliteStorage:
       (chat_id, message_id),
     ).fetchone()
     if not result:
-      raise KeyError("Message not stored")
+      return None
     chat_id, thread_id, message_id, user_id, content = result
     return StoredMessage(chat_id, thread_id, message_id, user_id, content)
 
-  async def get_message(self, message_id: int) -> StoredMessage:
+  async def get_message(self, message_id: int) -> StoredMessage | None:
     result = self.conn.execute(
       """
       SELECT chat_id, message_id, user_id, content FROM messages
@@ -93,7 +130,7 @@ class SqliteStorage:
       (message_id,),
     ).fetchone()
     if not result:
-      raise KeyError("Message not stored")
+      return None
     chat_id, message_id, user_id, content = result
     return StoredMessage(chat_id, None, message_id, user_id, content)
 
@@ -165,4 +202,27 @@ class SqliteStorage:
           WHERE message_id = ?
           """,
           (message.message_id,),
+        )
+
+  async def get_reactions(self, chat_id: int, message_id: int) -> StoredReactions:
+    result = self.conn.execute(
+      "SELECT reactions FROM reactions WHERE chat_id = ? AND message_id = ?",
+      (chat_id, message_id),
+    ).fetchone()
+    if not result:
+      return {}
+    return json.loads(result[0])
+
+  async def put_reactions(self, chat_id: int, message_id: int, reactions: StoredReactions) -> None:
+    reactions_json = json.dumps(reactions, separators=(",", ":"))
+    with self.conn:
+      try:
+        self.conn.execute(
+          "INSERT INTO reactions(chat_id, message_id, reactions) VALUES (?, ?, ?)",
+          (chat_id, message_id, reactions_json),
+        )
+      except sqlite3.IntegrityError:
+        self.conn.execute(
+          "UPDATE reactions SET reactions = ? WHERE chat_id = ? AND message_id = ?",
+          (reactions_json, chat_id, message_id),
         )
