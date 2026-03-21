@@ -102,7 +102,7 @@ Methods not usable by bots are **UNTESTED**, since I only use this on bots, use 
 - [x] guild.member.approve
 - [ ] guild.member.role.set
 - [ ] guild.member.role.unset
-- [ ] guild.role.list
+- [x] guild.role.list
 - [ ] guild.role.create (Not supported in Telegram)
 - [ ] guild.role.update (Not supported in Telegram)
 - [ ] guild.role.delete (Not supported in Telegram)

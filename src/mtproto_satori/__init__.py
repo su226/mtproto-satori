@@ -9,7 +9,7 @@ from typing import Any, Literal, NotRequired, TypedDict, cast
 from launart import Launart
 from launart.status import Phase
 from pyrogram.client import Client
-from pyrogram.enums import ChatType
+from pyrogram.enums import ChatMemberStatus, ChatType
 from pyrogram.file_id import FileId
 from pyrogram.raw.base.chat import Chat as RawChat
 from pyrogram.raw.base.update import Update as RawUpdate
@@ -54,6 +54,7 @@ from satori import (
   Member,
   MessageObject,
   PageResult,
+  Role,
   User,
 )
 from satori.server import Adapter, Request
@@ -157,6 +158,7 @@ class MTProtoAdapter(Adapter):
     self.route(Api.GUILD_MEMBER_KICK)(self._route_guild_member_kick)
     self.route(Api.GUILD_MEMBER_MUTE)(self._route_guild_member_mute)
     self.route(Api.GUILD_MEMBER_APPROVE)(self._route_guild_member_approve)
+    self.route(Api.GUILD_ROLE_LIST)(self._route_guild_role_list)
     self.route(Api.LOGIN_GET)(self._route_login_get)
     self.route(Api.USER_GET)(self._route_user_get)
     self.route(Api.USER_CHANNEL_CREATE)(self._route_user_channel_create)
@@ -681,6 +683,31 @@ class MTProtoAdapter(Adapter):
       await self.client.approve_chat_join_request(chat_id, user_id)
     else:
       await self.client.decline_chat_join_request(chat_id, user_id)
+
+  async def _route_guild_role_list(self, request: Request[GuildXXXListParam]) -> PageResult[Role]:
+    if not self.client or not self.me:
+      raise ValueError("Client not started")
+    chat_id = await resolve_peer(self.client, request.params["guild_id"])
+    if chat_id < -1000000000000:
+      return PageResult(
+        [
+          Role(ChatMemberStatus.OWNER.name.lower()),
+          Role(ChatMemberStatus.ADMINISTRATOR.name.lower()),
+          Role(ChatMemberStatus.MEMBER.name.lower()),
+          Role(ChatMemberStatus.RESTRICTED.name.lower()),
+          Role(ChatMemberStatus.LEFT.name.lower()),
+          Role(ChatMemberStatus.BANNED.name.lower()),
+        ]
+      )
+    if chat_id < 0:
+      return PageResult(
+        [
+          Role(ChatMemberStatus.OWNER.name.lower()),
+          Role(ChatMemberStatus.ADMINISTRATOR.name.lower()),
+          Role(ChatMemberStatus.MEMBER.name.lower()),
+        ]
+      )
+    raise ValueError("Not a group.")
 
   async def _route_login_get(self, request: Request[Any]) -> Login:
     if not self.client or not self.me:
