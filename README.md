@@ -98,7 +98,7 @@ Methods not usable by bots are **UNTESTED**, since I only use this on bots, use 
 - [x] guild.member.get
 - [x] guild.member.list
 - [x] guild.member.kick
-- [ ] guild.member.mute
+- [x] guild.member.mute
 - [ ] guild.member.approve
 - [ ] guild.member.role.set
 - [ ] guild.member.role.unset

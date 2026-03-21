@@ -65,6 +65,7 @@ from satori.server.route import (
   GuildGetParam,
   GuildMemberGetParam,
   GuildMemberKickParam,
+  GuildMemberMuteParam,
   GuildXXXListParam,
   MessageOpParam,
   MessageParam,
@@ -152,6 +153,7 @@ class MTProtoAdapter(Adapter):
     self.route(Api.GUILD_MEMBER_GET)(self._route_guild_member_get)
     self.route(Api.GUILD_MEMBER_LIST)(self._route_guild_member_list)
     self.route(Api.GUILD_MEMBER_KICK)(self._route_guild_member_kick)
+    self.route(Api.GUILD_MEMBER_MUTE)(self._route_guild_member_mute)
     self.route(Api.LOGIN_GET)(self._route_login_get)
     self.route(Api.USER_GET)(self._route_user_get)
     self.route(Api.USER_CHANNEL_CREATE)(self._route_user_channel_create)
@@ -621,6 +623,34 @@ class MTProtoAdapter(Adapter):
     await self.client.ban_chat_member(chat_id, user_id, datetime.now() + timedelta(minutes=1))
     if chat_id < -1000000000000:
       await self.client.unban_chat_member(chat_id, user_id)
+
+  async def _route_guild_member_mute(self, request: Request[GuildMemberMuteParam]) -> None:
+    if not self.client or not self.me:
+      raise ValueError("Client not started")
+    chat_id = await resolve_peer(self.client, request.params["guild_id"])
+    user_id = await resolve_peer(self.client, request.params["user_id"])
+    duration = request.params["duration"]
+    muted = duration > 0
+    permissions = ChatPermissions(
+      can_send_messages=not muted,
+      can_send_audios=not muted,
+      can_send_documents=not muted,
+      can_send_photos=not muted,
+      can_send_videos=not muted,
+      can_send_video_notes=not muted,
+      can_send_voice_notes=not muted,
+      can_send_polls=not muted,
+      can_send_other_messages=not muted,
+      can_add_web_page_previews=not muted,
+      can_change_info=not muted,
+      can_invite_users=not muted,
+      can_pin_messages=not muted,
+      can_manage_topics=not muted,
+    )
+    # Less than 30s will be considered as permanent.
+    # A minimum of 60s is used here to account for network fluctuations.
+    until_date = datetime.now() + timedelta(milliseconds=max(60_000, duration))
+    await self.client.restrict_chat_member(chat_id, user_id, permissions, until_date)
 
   async def _route_login_get(self, request: Request[Any]) -> Login:
     if not self.client or not self.me:
