@@ -57,6 +57,7 @@ from satori import (
 from satori.server import Adapter, Request
 from satori.server.adapter import LoginType
 from satori.server.route import (
+  ChannelCreateParam,
   ChannelParam,
   GuildGetParam,
   GuildMemberGetParam,
@@ -140,6 +141,7 @@ class MTProtoAdapter(Adapter):
     self.ignore_automatic_forward_interval = ignore_automatic_forward_interval
     self.ignore_automatic_forward_ids = dict[tuple[int, int], asyncio.Task]()
     self.route(Api.CHANNEL_GET)(self._route_channel_get)
+    self.route(Api.CHANNEL_CREATE)(self._route_channel_create)
     self.route(Api.GUILD_GET)(self._route_guild_get)
     self.route(Api.GUILD_MEMBER_GET)(self._route_guild_member_get)
     self.route(Api.GUILD_MEMBER_LIST)(self._route_guild_member_list)
@@ -475,6 +477,13 @@ class MTProtoAdapter(Adapter):
       channel_id = str(chat_id)
       channel_type = ChannelType.TEXT
     return Channel(channel_id, channel_type)
+
+  async def _route_channel_create(self, request: Request[ChannelCreateParam]) -> Channel:
+    if not self.client or not self.me:
+      raise ValueError("Client not started")
+    chat_id = await resolve_peer(self.client, request.params["guild_id"])
+    topic = await self.client.create_forum_topic(chat_id, request.params["data"].get("name", ""))
+    return Channel(f"{chat_id}:{topic.id}", ChannelType.TEXT, topic.title)
 
   async def _route_guild_get(self, request: Request[GuildGetParam]) -> Guild:
     if not self.client or not self.me:
