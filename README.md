@@ -135,7 +135,7 @@ Methods not usable by bots are **UNTESTED**, since I only use this on bots, use 
 - [x] guild-member-added ([Not usable by users](https://docs.kurigram.icu/api/decorators/#pyrogram.Client.on_chat_member_updated))
 - [x] guild-member-updated ([Not usable by users](https://docs.kurigram.icu/api/decorators/#pyrogram.Client.on_chat_member_updated))
 - [x] guild-member-removed ([Not usable by users](https://docs.kurigram.icu/api/decorators/#pyrogram.Client.on_chat_member_updated))
-- [ ] guild-member-request ([Not usable by users](https://docs.kurigram.icu/api/decorators/#pyrogram.Client.on_chat_join_request))
+- [x] guild-member-request ([Not usable by users](https://docs.kurigram.icu/api/decorators/#pyrogram.Client.on_chat_join_request))
 - [ ] guild-role-created (Not supported in Telegram)
 - [ ] guild-role-updated (Not supported in Telegram)
 - [ ] guild-role-deleted (Not supported in Telegram)

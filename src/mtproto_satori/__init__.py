@@ -30,6 +30,7 @@ from pyrogram.raw.types.update_user_name import UpdateUserName
 from pyrogram.session.session import Session
 from pyrogram.types import (
   CallbackQuery,
+  ChatJoinRequest,
   ChatMember,
   ChatMemberUpdated,
   ChatPermissions,
@@ -309,6 +310,22 @@ class MTProtoAdapter(Adapter):
     )
     await self.queue.put(event)
     await callback.answer()
+
+  async def _on_chat_join_request(self, client: Client, request: ChatJoinRequest) -> None:
+    if not self.me:
+      raise ValueError("Client is not fully initalized.")
+    guild = parse_guild(self.me.tg.id, request.chat)
+    user = parse_user(self.me.tg.id, request.from_user)
+    event = Event(
+      EventType.GUILD_MEMBER_REQUEST,
+      request.date,
+      self.me.satori,
+      guild=guild,
+      member=Member(user),
+      user=user,
+      message=MessageObject(f"guild_member_request:{guild.id}:{user.id}"),
+    )
+    await self.queue.put(event)
 
   async def _on_chat_member_updated(self, client: Client, update: ChatMemberUpdated) -> None:
     if not self.me:
@@ -657,7 +674,7 @@ class MTProtoAdapter(Adapter):
   async def _route_guild_member_approve(self, request: Request[ApproveParam]) -> None:
     if not self.client or not self.me:
       raise ValueError("Client not started")
-    split_id = request.params["message_id"].split(":", 1)
+    split_id = request.params["message_id"].removeprefix("guild_member_request:").split(":", 1)
     chat_id = await resolve_peer(self.client, split_id[0])
     user_id = await resolve_peer(self.client, split_id[1])
     if request.params["approve"]:
@@ -762,6 +779,7 @@ class MTProtoAdapter(Adapter):
       self.client.on_edited_message()(self._on_edited_message)
       self.client.on_deleted_messages()(self._on_deleted_messages)
       self.client.on_callback_query()(self._on_callback_query)
+      self.client.on_chat_join_request()(self._on_chat_join_request)
       self.client.on_chat_member_updated()(self._on_chat_member_updated)
       self.client.on_message_reaction()(self._on_message_reaction)
       self.client.on_message_reaction_count()(self._on_message_reaction_count)
