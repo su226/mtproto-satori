@@ -113,11 +113,13 @@ Methods not usable by bots are **UNTESTED**, since I only use this on bots, use 
 - [x] message.update
 - [ ] message.list ([Not usable by bots](https://docs.kurigram.icu/api/methods/search_messages/#pyrogram.Client.search_messages))
 - [x] reaction.create
-- [ ] reaction.delete
-- [ ] reaction.clear
-- [ ] reaction.list
+- [x] reaction.delete
+- [ ] reaction.clear (Not supported in Telegram)
+- [ ] reaction.list (Not usable by bots)[^1]
 - [x] user.channel.create
 - [x] user.get
+
+[^1]: Messages returned by [get_messages](https://docs.kurigram.icu/api/methods/get_messages/) contain no reactions for bots.
 
 ### Event
 
@@ -146,11 +148,11 @@ Methods not usable by bots are **UNTESTED**, since I only use this on bots, use 
 - [x] login-updated
 - [x] message-created
 - [x] message-updated
-- [x] message-deleted (Limited on bots)[^1]
+- [x] message-deleted (Limited on bots)[^2]
 - [x] reaction-added ([Not usable by users](https://docs.kurigram.icu/api/decorators/#pyrogram.Client.on_message_reaction_count))
 - [x] reaction-removed ([Not usable by users](https://docs.kurigram.icu/api/decorators/#pyrogram.Client.on_message_reaction_count))
 
-[^1]: Bots can only receive all message-deleted events in direct messages and (basic) groups. In supergroups, only message-deleted events related to the bot are received. (Like a "enforced" privacy mode) In channels, no message-deleted events can be received.
+[^2]: Bots can only receive all message-deleted events in direct messages and (basic) groups. In supergroups, only message-deleted events related to the bot are received. (Like a "enforced" privacy mode) In channels, no message-deleted events can be received.
 
 ### Element
 

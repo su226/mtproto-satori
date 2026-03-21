@@ -75,6 +75,7 @@ from satori.server.route import (
   MessageParam,
   MessageUpdateParam,
   ReactionCreateParam,
+  ReactionDeleteParam,
   UserChannelCreateParam,
   UserOpParam,
 )
@@ -176,6 +177,7 @@ class MTProtoAdapter(Adapter):
     self.route(Api.MESSAGE_DELETE)(self._route_message_delete)
     self.route(Api.MESSAGE_UPDATE)(self._route_message_update)
     self.route(Api.REACTION_CREATE)(self._route_reaction_create)
+    self.route(Api.REACTION_DELETE)(self._route_reaction_delete)
 
   @property
   def required(self) -> set[str]:
@@ -862,6 +864,21 @@ class MTProtoAdapter(Adapter):
     except ValueError:
       pass
     await self.client.send_reaction(chat_id, message_id, emoji_id)
+
+  async def _route_reaction_delete(self, request: Request[ReactionDeleteParam]) -> None:
+    if not self.client or not self.me:
+      raise ValueError("Client not started")
+    if request.params["emoji_id"].startswith("paid"):
+      raise ValueError("Cannot retract paid reaction.")
+    if user_id := request.params.get("user_id"):
+      if await resolve_peer(self.client, user_id) != self.me.tg.id:
+        raise ValueError("Cannot retract other's reaction.")
+    chat_id, message_id = await resolve_channel_message_id(
+      self.client,
+      request.params["channel_id"],
+      request.params["message_id"],
+    )
+    await self.client.send_reaction(chat_id, message_id)
 
   async def launch(self, manager: Launart) -> None:
     async with self.stage("preparing"):
