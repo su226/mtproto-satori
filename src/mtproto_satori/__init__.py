@@ -144,6 +144,7 @@ class MTProtoAdapter(Adapter):
     self.route(Api.CHANNEL_GET)(self._route_channel_get)
     self.route(Api.CHANNEL_CREATE)(self._route_channel_create)
     self.route(Api.CHANNEL_UPDATE)(self._route_channel_update)
+    self.route(Api.CHANNEL_DELETE)(self._route_channel_delete)
     self.route(Api.GUILD_GET)(self._route_guild_get)
     self.route(Api.GUILD_MEMBER_GET)(self._route_guild_member_get)
     self.route(Api.GUILD_MEMBER_LIST)(self._route_guild_member_list)
@@ -495,6 +496,14 @@ class MTProtoAdapter(Adapter):
       raise ValueError("Not a forum topic.")
     title = request.params["data"].get("name", "")
     await self.client.edit_forum_topic(chat_id, thread_id, title)
+
+  async def _route_channel_delete(self, request: Request[ChannelParam]) -> None:
+    if not self.client or not self.me:
+      raise ValueError("Client not started")
+    chat_id, thread_id = await resolve_channel_id(self.client, request.params["channel_id"])
+    if not thread_id:
+      raise ValueError("Not a forum topic.")
+    await self.client.delete_forum_topic(chat_id, thread_id)
 
   async def _route_guild_get(self, request: Request[GuildGetParam]) -> Guild:
     if not self.client or not self.me:
