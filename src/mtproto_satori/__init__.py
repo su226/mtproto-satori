@@ -130,6 +130,7 @@ class MTProtoAdapter(Adapter):
     phone: str = "",
     password: str = "",
     bot_token: str = "",
+    test_mode: bool = False,
     proxy: Proxy | None = None,
     *,
     ignore_automatic_forward_interval: float = 10,
@@ -143,10 +144,13 @@ class MTProtoAdapter(Adapter):
     self.phone = phone
     self.password = password
     self.bot_token = bot_token
+    self.test_mode = test_mode
     if bot_token:
       self.session_name = "bot_" + bot_token.split(":", 1)[0]
     else:
       self.session_name = "user_" + re.sub(r"[+()\s-]", "", phone)
+    if test_mode:
+      self.session_name = "test_" + self.session_name
     self.client: Client | None = None
     self.me: Me | None = None
     self.storage = SqliteStorage(self.session_name)
@@ -887,6 +891,7 @@ class MTProtoAdapter(Adapter):
         self.api_id,
         self.api_hash,
         proxy=cast(dict, self.proxy),
+        test_mode=self.test_mode,
         bot_token=self.bot_token,
         phone_number=self.phone,
         password=self.password,

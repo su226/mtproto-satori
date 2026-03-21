@@ -1,3 +1,4 @@
+import argparse
 import tomllib
 
 from satori.server import Server
@@ -6,7 +7,10 @@ from mtproto_satori import MTProtoAdapter
 
 
 def main() -> None:
-  with open("config.toml", "rb") as f:
+  parser = argparse.ArgumentParser()
+  parser.add_argument("--config", "-c", default="config.toml")
+  args = parser.parse_args()
+  with open(args.config, "rb") as f:
     config = tomllib.load(f)
   server = Server(
     config.get("host", "127.0.0.1"),
@@ -22,6 +26,7 @@ def main() -> None:
       config.get("phone", ""),
       config.get("password", ""),
       config.get("bot_token", ""),
+      config.get("test_mode", False),
       config.get("proxy", None),
       merge_media_groups_receive=merge_media_groups.get("receive", 0.1),
       ignore_automatic_forward_interval=config.get("ignore_automatic_forward_interval", 10),

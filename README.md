@@ -36,6 +36,11 @@ password = ""
 bot_token = ""
 # Either phone or bot_token is required
 
+test_mode = false
+# Optional, defaults to false
+# Log into Telegram's test server.
+# See https://core.telegram.org/api/auth#test-accounts and https://docs.kurigram.icu/topics/test-servers/
+
 ignore_automatic_forward_interval = 10
 # Optional, defaults to 10(s)
 # If bot is in both a channel and its linked group, channel messages will be received twice.
@@ -75,7 +80,7 @@ receive = 0.1
 
 Install dependencies with `uv sync`.
 
-Start with `uv run mtproto-satori`.
+Start with `uv run mtproto-satori`. Add `-c xxx.toml` to use custom config file.
 
 ## Features
 
