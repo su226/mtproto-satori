@@ -74,6 +74,7 @@ from satori.server.route import (
   MessageOpParam,
   MessageParam,
   MessageUpdateParam,
+  ReactionCreateParam,
   UserChannelCreateParam,
   UserOpParam,
 )
@@ -174,6 +175,7 @@ class MTProtoAdapter(Adapter):
     self.route(Api.MESSAGE_GET)(self._route_message_get)
     self.route(Api.MESSAGE_DELETE)(self._route_message_delete)
     self.route(Api.MESSAGE_UPDATE)(self._route_message_update)
+    self.route(Api.REACTION_CREATE)(self._route_reaction_create)
 
   @property
   def required(self) -> set[str]:
@@ -838,6 +840,28 @@ class MTProtoAdapter(Adapter):
       request.params["content"],
     )
     await self.storage.put_message(StoredMessage.from_message(self.me.tg.id, tg, satori.content))
+
+  async def _route_reaction_create(self, request: Request[ReactionCreateParam]) -> None:
+    if not self.client or not self.me:
+      raise ValueError("Client not started")
+    chat_id, message_id = await resolve_channel_message_id(
+      self.client,
+      request.params["channel_id"],
+      request.params["message_id"],
+    )
+    emoji_id = request.params["emoji_id"]
+    if emoji_id.startswith("paid"):
+      try:
+        amount = int(emoji_id[4:])
+      except ValueError:
+        amount = 1
+      await self.client.send_paid_reaction(chat_id, message_id, amount)
+      return
+    try:
+      emoji_id = int(emoji_id)
+    except ValueError:
+      pass
+    await self.client.send_reaction(chat_id, message_id, emoji_id)
 
   async def launch(self, manager: Launart) -> None:
     async with self.stage("preparing"):

@@ -112,7 +112,7 @@ Methods not usable by bots are **UNTESTED**, since I only use this on bots, use 
 - [x] message.delete
 - [x] message.update
 - [ ] message.list ([Not usable by bots](https://docs.kurigram.icu/api/methods/search_messages/#pyrogram.Client.search_messages))
-- [ ] reaction.create
+- [x] reaction.create
 - [ ] reaction.delete
 - [ ] reaction.clear
 - [ ] reaction.list
