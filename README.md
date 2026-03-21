@@ -143,7 +143,7 @@ Methods not usable by bots are **UNTESTED**, since I only use this on bots, use 
 - [x] interaction/command
 - [x] login-added
 - [x] login-removed
-- [ ] login-updated
+- [x] login-updated
 - [x] message-created
 - [x] message-updated
 - [x] message-deleted (Limited on bots)[^1]

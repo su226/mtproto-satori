@@ -11,6 +11,9 @@ from launart.status import Phase
 from pyrogram.client import Client
 from pyrogram.enums import ChatType
 from pyrogram.file_id import FileId
+from pyrogram.raw.base.chat import Chat as RawChat
+from pyrogram.raw.base.update import Update as RawUpdate
+from pyrogram.raw.base.user import User as RawUser
 from pyrogram.raw.functions.channels.get_participants import GetParticipants
 from pyrogram.raw.functions.messages.get_full_chat import GetFullChat
 from pyrogram.raw.types.channel_full import ChannelFull
@@ -22,6 +25,8 @@ from pyrogram.raw.types.chat_participants_forbidden import ChatParticipantsForbi
 from pyrogram.raw.types.input_channel import InputChannel
 from pyrogram.raw.types.input_peer_channel import InputPeerChannel
 from pyrogram.raw.types.input_peer_chat import InputPeerChat
+from pyrogram.raw.types.update_user import UpdateUser
+from pyrogram.raw.types.update_user_name import UpdateUserName
 from pyrogram.session.session import Session
 from pyrogram.types import (
   CallbackQuery,
@@ -437,6 +442,25 @@ class MTProtoAdapter(Adapter):
     event = Event(EventType.LOGIN_REMOVED, datetime.now(), self.me.satori)
     await self.queue.put(event)
 
+  def _filter_me_update(self, client: Client, update: RawUpdate) -> bool:
+    # UpdateUser: avatar update
+    # UpdateUserName: name or nick update
+    if not self.me or not isinstance(update, (UpdateUser, UpdateUserName)):
+      return False
+    return update.user_id == self.me.tg.id
+
+  async def _on_me_update(
+    self,
+    client: Client,
+    update: UpdateUser | UpdateUserName,
+    users: dict[int, RawUser],
+    chats: dict[int, RawChat],
+  ) -> None:
+    now = datetime.now()
+    me = await self._update_me()
+    event = Event(EventType.LOGIN_UPDATED, now, me.satori)
+    await self.queue.put(event)
+
   async def _route_channel_get(self, request: Request[ChannelParam]) -> Channel:
     if not self.client or not self.me:
       raise ValueError("Client not started")
@@ -547,8 +571,7 @@ class MTProtoAdapter(Adapter):
   async def _route_login_get(self, request: Request[Any]) -> Login:
     if not self.client or not self.me:
       raise ValueError("Client not started")
-    me = await self._update_me()
-    return me.satori
+    return self.me.satori
 
   async def _route_user_get(self, request: Request[UserOpParam]) -> User:
     if not self.client or not self.me:
@@ -647,6 +670,7 @@ class MTProtoAdapter(Adapter):
       self.client.on_message_reaction_count()(self._on_message_reaction_count)
       self.client.on_connect()(self._on_connect)
       self.client.on_disconnect()(self._on_disconnect)
+      self.client.on_raw_update(self._filter_me_update)(self._on_me_update)
       await self.storage.open()
 
     async with self.stage("blocking"):
