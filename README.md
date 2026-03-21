@@ -86,7 +86,7 @@ Methods not usable by bots are **UNTESTED**, since I only use this on bots, use 
 - [x] channel.get
 - [ ] channel.list ([Not usable by bots](https://docs.kurigram.icu/api/methods/get_forum_topics/#pyrogram.Client.get_forum_topics))
 - [x] channel.create
-- [ ] channel.update
+- [x] channel.update
 - [ ] channel.delete
 - [ ] channel.mute (Not supported in Telegram)
 - [ ] friend.list ([Not usable by bots](https://docs.kurigram.icu/api/methods/get_contacts/#pyrogram.Client.get_contacts))
