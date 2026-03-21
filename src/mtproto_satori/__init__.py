@@ -22,6 +22,7 @@ from pyrogram.raw.types.chat_participants_forbidden import ChatParticipantsForbi
 from pyrogram.raw.types.input_channel import InputChannel
 from pyrogram.raw.types.input_peer_channel import InputPeerChannel
 from pyrogram.raw.types.input_peer_chat import InputPeerChat
+from pyrogram.session.session import Session
 from pyrogram.types import (
   CallbackQuery,
   ChatMember,
@@ -128,6 +129,7 @@ class MTProtoAdapter(Adapter):
     self.client: Client | None = None
     self.me: Me | None = None
     self.storage = SqliteStorage(self.session_name)
+    self.is_connected = False
     self.merge_media_groups_receive = merge_media_groups_receive
     self.media_groups = dict[int, tuple[datetime, list[Message]]]()
     self.ignore_automatic_forward_interval = ignore_automatic_forward_interval
@@ -416,6 +418,25 @@ class MTProtoAdapter(Adapter):
           )
           await self.queue.put(event)
 
+  async def _on_connect(self, client: Client, session: Session) -> None:
+    if self.is_connected:
+      return
+    self.is_connected = True
+    if not self.me:
+      return
+    event = Event(EventType.LOGIN_ADDED, datetime.now(), self.me.satori)
+    await self.queue.put(event)
+
+  async def _on_disconnect(self, client: Client, session: Session) -> None:
+    # on_disconnected will be called when connection refused.
+    if not self.is_connected:
+      return
+    self.is_connected = False
+    if not self.me:
+      return
+    event = Event(EventType.LOGIN_REMOVED, datetime.now(), self.me.satori)
+    await self.queue.put(event)
+
   async def _route_channel_get(self, request: Request[ChannelParam]) -> Channel:
     if not self.client or not self.me:
       raise ValueError("Client not started")
@@ -624,6 +645,8 @@ class MTProtoAdapter(Adapter):
       self.client.on_chat_member_updated()(self._on_chat_member_updated)
       self.client.on_message_reaction()(self._on_message_reaction)
       self.client.on_message_reaction_count()(self._on_message_reaction_count)
+      self.client.on_connect()(self._on_connect)
+      self.client.on_disconnect()(self._on_disconnect)
       await self.storage.open()
 
     async with self.stage("blocking"):
@@ -668,6 +691,7 @@ class MTProtoAdapter(Adapter):
     return self.me
 
   async def get_logins(self) -> list[LoginType]:
-    if not self.me:
+    # Not using self.client.is_connected becaust it won't change during on_connected / on_disconnected events.
+    if not self.is_connected or not self.me:
       return []
     return [self.me.satori]

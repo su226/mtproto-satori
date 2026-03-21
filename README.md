@@ -142,8 +142,8 @@ Methods not usable by bots are **UNTESTED**, since I only use this on bots, use 
 - [x] interaction/button
 - [x] interaction/command
 - [x] login-added
-- [ ] login-removed (Not supported in Kurigram)
-- [ ] login-updated (Not supported in Kurigram)
+- [x] login-removed
+- [ ] login-updated
 - [x] message-created
 - [x] message-updated
 - [x] message-deleted (Limited on bots)[^1]
