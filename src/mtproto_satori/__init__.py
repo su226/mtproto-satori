@@ -58,6 +58,7 @@ from satori import (
 from satori.server import Adapter, Request
 from satori.server.adapter import LoginType
 from satori.server.route import (
+  ApproveParam,
   ChannelCreateParam,
   ChannelMuteParam,
   ChannelParam,
@@ -154,6 +155,7 @@ class MTProtoAdapter(Adapter):
     self.route(Api.GUILD_MEMBER_LIST)(self._route_guild_member_list)
     self.route(Api.GUILD_MEMBER_KICK)(self._route_guild_member_kick)
     self.route(Api.GUILD_MEMBER_MUTE)(self._route_guild_member_mute)
+    self.route(Api.GUILD_MEMBER_APPROVE)(self._route_guild_member_approve)
     self.route(Api.LOGIN_GET)(self._route_login_get)
     self.route(Api.USER_GET)(self._route_user_get)
     self.route(Api.USER_CHANNEL_CREATE)(self._route_user_channel_create)
@@ -651,6 +653,17 @@ class MTProtoAdapter(Adapter):
     # A minimum of 60s is used here to account for network fluctuations.
     until_date = datetime.now() + timedelta(milliseconds=max(60_000, duration))
     await self.client.restrict_chat_member(chat_id, user_id, permissions, until_date)
+
+  async def _route_guild_member_approve(self, request: Request[ApproveParam]) -> None:
+    if not self.client or not self.me:
+      raise ValueError("Client not started")
+    split_id = request.params["message_id"].split(":", 1)
+    chat_id = await resolve_peer(self.client, split_id[0])
+    user_id = await resolve_peer(self.client, split_id[1])
+    if request.params["approve"]:
+      await self.client.approve_chat_join_request(chat_id, user_id)
+    else:
+      await self.client.decline_chat_join_request(chat_id, user_id)
 
   async def _route_login_get(self, request: Request[Any]) -> Login:
     if not self.client or not self.me:
