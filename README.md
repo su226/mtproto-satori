@@ -100,8 +100,8 @@ Methods not usable by bots are **UNTESTED**, since I only use this on bots, use 
 - [x] guild.member.kick
 - [x] guild.member.mute
 - [x] guild.member.approve
-- [ ] guild.member.role.set
-- [ ] guild.member.role.unset
+- [x] guild.member.role.set
+- [x] guild.member.role.unset
 - [x] guild.role.list
 - [ ] guild.role.create (Not supported in Telegram)
 - [ ] guild.role.update (Not supported in Telegram)
@@ -150,7 +150,7 @@ Methods not usable by bots are **UNTESTED**, since I only use this on bots, use 
 - [x] reaction-added ([Not usable by users](https://docs.kurigram.icu/api/decorators/#pyrogram.Client.on_message_reaction_count))
 - [x] reaction-removed ([Not usable by users](https://docs.kurigram.icu/api/decorators/#pyrogram.Client.on_message_reaction_count))
 
-[^1]: Bots can only receive all message-deleted events in direct messages and (regular) groups. In supergroups, only message-deleted events related to the bot are received. (Like a "enforced" privacy mode) In channels, no message-deleted events can be received.
+[^1]: Bots can only receive all message-deleted events in direct messages and (basic) groups. In supergroups, only message-deleted events related to the bot are received. (Like a "enforced" privacy mode) In channels, no message-deleted events can be received.
 
 ### Element
 
@@ -202,3 +202,14 @@ Input guild ID: A username or [bot API dialog ID](https://core.telegram.org/api/
 Output guild ID: A [bot API dialog ID](https://core.telegram.org/api/bots/ids), usernames will be resolved, excpet users have no guild.
 
 Message ID: "yyy" for messages quoted from same chat, "xxxxxx:yyy" for messages quoted from different chat. `message.get` will automatically use chat id in message id if exists.
+
+Roles:
+
+| Role            | Set behavior        | Unset behavior |
+| --------------- | ------------------- | -------------- |
+| `owner`         | Error               | Error          |
+| `administrator` | Promote             | Demote         |
+| `member`        | Demote / Unrestrict | Kick           |
+| `restricted`    | Restrict            | Unrestrict     |
+| `left`          | Kick                | Error          |
+| `banned`        | Ban                 | Unban          |

@@ -1,10 +1,13 @@
+from datetime import datetime, timedelta
+
 from pyrogram.client import Client
 from pyrogram.enums import ChatType
 from pyrogram.raw.types.input_peer_channel import InputPeerChannel
 from pyrogram.raw.types.input_peer_chat import InputPeerChat
 from pyrogram.raw.types.input_peer_user import InputPeerUser
-from pyrogram.types import Chat, ChatMember, Reaction
+from pyrogram.types import Chat, ChatAdministratorRights, ChatMember, ChatPermissions, Reaction
 from pyrogram.types import User as TGUser
+from pyrogram.utils import zero_datetime
 from satori import Channel, ChannelType, EmojiObject, Guild, Member, Role, User
 
 from mtproto_satori.const import PLATFORM
@@ -117,3 +120,100 @@ async def resolve_channel_message_id(
     parsed_channel_id, _ = await resolve_channel_id(client, channel_id)
     parsed_message_id = int(split_id[0])
   return parsed_channel_id, parsed_message_id
+
+
+async def kick_chat_member(client: Client, chat_id: int, user_id: int) -> None:
+  await client.ban_chat_member(chat_id, user_id, datetime.now() + timedelta(minutes=1))
+  if chat_id < -1000000000000:
+    await client.unban_chat_member(chat_id, user_id)
+
+
+async def restrict_chat_member(
+  client: Client,
+  chat_id: int,
+  user_id: int,
+  until_date: datetime | None = None,
+) -> None:
+  permissions = ChatPermissions(
+    can_send_messages=False,
+    can_send_audios=False,
+    can_send_documents=False,
+    can_send_photos=False,
+    can_send_videos=False,
+    can_send_video_notes=False,
+    can_send_voice_notes=False,
+    can_send_polls=False,
+    can_send_other_messages=False,
+    can_add_web_page_previews=False,
+    can_change_info=False,
+    can_invite_users=False,
+    can_pin_messages=False,
+    can_manage_topics=False,
+  )
+  await client.restrict_chat_member(chat_id, user_id, permissions, until_date or zero_datetime())
+
+
+async def unrestrict_chat_member(client: Client, chat_id: int, user_id: int) -> None:
+  permissions = ChatPermissions(
+    can_send_messages=True,
+    can_send_audios=True,
+    can_send_documents=True,
+    can_send_photos=True,
+    can_send_videos=True,
+    can_send_video_notes=True,
+    can_send_voice_notes=True,
+    can_send_polls=True,
+    can_send_other_messages=True,
+    can_add_web_page_previews=True,
+    can_change_info=True,
+    can_invite_users=True,
+    can_pin_messages=True,
+    can_manage_topics=True,
+  )
+  await client.restrict_chat_member(chat_id, user_id, permissions)
+
+
+async def promote_chat_member(client: Client, chat_id: int, user_id: int) -> None:
+  # For basic groups, editChatAdmin should be used.
+  # But bots cannot use that method.
+  permissions = ChatAdministratorRights(
+    is_anonymous=False,
+    can_manage_chat=True,
+    can_delete_messages=True,
+    can_manage_video_chats=True,
+    can_restrict_members=True,
+    can_promote_members=False,
+    can_change_info=True,
+    can_invite_users=True,
+    can_post_stories=True,
+    can_edit_stories=True,
+    can_delete_stories=True,
+    can_post_messages=True,
+    can_edit_messages=True,
+    can_pin_messages=True,
+    can_manage_topics=True,
+    can_manage_direct_messages=True,
+  )
+  await client.promote_chat_member(chat_id, user_id, permissions)
+
+
+async def demote_chat_member(client: Client, chat_id: int, user_id: int) -> None:
+  permissions = ChatAdministratorRights(
+    is_anonymous=False,
+    can_manage_chat=False,
+    can_delete_messages=False,
+    can_manage_video_chats=False,
+    can_restrict_members=False,
+    can_promote_members=False,
+    can_change_info=False,
+    can_invite_users=False,
+    can_post_stories=False,
+    can_edit_stories=False,
+    can_delete_stories=False,
+    can_post_messages=False,
+    can_edit_messages=False,
+    can_pin_messages=False,
+    can_manage_topics=False,
+    can_manage_direct_messages=False,
+  )
+  await client.promote_chat_member(chat_id, user_id, permissions)

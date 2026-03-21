@@ -69,6 +69,7 @@ from satori.server.route import (
   GuildMemberGetParam,
   GuildMemberKickParam,
   GuildMemberMuteParam,
+  GuildMemberRoleParam,
   GuildXXXListParam,
   MessageOpParam,
   MessageParam,
@@ -88,15 +89,20 @@ from mtproto_satori.storage import (
   serialize_reactions,
 )
 from mtproto_satori.user import (
+  demote_chat_member,
+  kick_chat_member,
   parse_guild,
   parse_guild_channel,
   parse_member,
   parse_reaction,
   parse_sender_chat,
   parse_user,
+  promote_chat_member,
   resolve_channel_id,
   resolve_channel_message_id,
   resolve_peer,
+  restrict_chat_member,
+  unrestrict_chat_member,
 )
 
 
@@ -158,6 +164,8 @@ class MTProtoAdapter(Adapter):
     self.route(Api.GUILD_MEMBER_KICK)(self._route_guild_member_kick)
     self.route(Api.GUILD_MEMBER_MUTE)(self._route_guild_member_mute)
     self.route(Api.GUILD_MEMBER_APPROVE)(self._route_guild_member_approve)
+    self.route(Api.GUILD_MEMBER_ROLE_SET)(self._route_guild_member_role_set)
+    self.route(Api.GUILD_MEMBER_ROLE_UNSET)(self._route_guild_member_role_unset)
     self.route(Api.GUILD_ROLE_LIST)(self._route_guild_role_list)
     self.route(Api.LOGIN_GET)(self._route_login_get)
     self.route(Api.USER_GET)(self._route_user_get)
@@ -641,9 +649,7 @@ class MTProtoAdapter(Adapter):
     if request.params.get("permanent", False):
       await self.client.ban_chat_member(chat_id, user_id)
       return
-    await self.client.ban_chat_member(chat_id, user_id, datetime.now() + timedelta(minutes=1))
-    if chat_id < -1000000000000:
-      await self.client.unban_chat_member(chat_id, user_id)
+    await kick_chat_member(self.client, chat_id, user_id)
 
   async def _route_guild_member_mute(self, request: Request[GuildMemberMuteParam]) -> None:
     if not self.client or not self.me:
@@ -651,27 +657,13 @@ class MTProtoAdapter(Adapter):
     chat_id = await resolve_peer(self.client, request.params["guild_id"])
     user_id = await resolve_peer(self.client, request.params["user_id"])
     duration = request.params["duration"]
-    muted = duration > 0
-    permissions = ChatPermissions(
-      can_send_messages=not muted,
-      can_send_audios=not muted,
-      can_send_documents=not muted,
-      can_send_photos=not muted,
-      can_send_videos=not muted,
-      can_send_video_notes=not muted,
-      can_send_voice_notes=not muted,
-      can_send_polls=not muted,
-      can_send_other_messages=not muted,
-      can_add_web_page_previews=not muted,
-      can_change_info=not muted,
-      can_invite_users=not muted,
-      can_pin_messages=not muted,
-      can_manage_topics=not muted,
-    )
-    # Less than 30s will be considered as permanent.
-    # A minimum of 60s is used here to account for network fluctuations.
-    until_date = datetime.now() + timedelta(milliseconds=max(60_000, duration))
-    await self.client.restrict_chat_member(chat_id, user_id, permissions, until_date)
+    if duration > 0:
+      # Less than 30s will be considered as permanent.
+      # A minimum of 60s is used here to account for network fluctuations.
+      until_date = datetime.now() + timedelta(milliseconds=max(60_000, duration))
+      await restrict_chat_member(self.client, chat_id, user_id, until_date)
+    else:
+      await unrestrict_chat_member(self.client, chat_id, user_id)
 
   async def _route_guild_member_approve(self, request: Request[ApproveParam]) -> None:
     if not self.client or not self.me:
@@ -683,6 +675,65 @@ class MTProtoAdapter(Adapter):
       await self.client.approve_chat_join_request(chat_id, user_id)
     else:
       await self.client.decline_chat_join_request(chat_id, user_id)
+
+  async def _route_guild_member_role_set(self, request: Request[GuildMemberRoleParam]) -> None:
+    if not self.client or not self.me:
+      raise ValueError("Client not started")
+    chat_id = await resolve_peer(self.client, request.params["guild_id"])
+    user_id = await resolve_peer(self.client, request.params["user_id"])
+    role_id = request.params["role_id"]
+    if role_id == ChatMemberStatus.OWNER.name.lower():
+      # transfer_chat_ownership is not usable by bots.
+      raise ValueError('"owner" role cannot be set.')
+    elif role_id == ChatMemberStatus.ADMINISTRATOR.name.lower():
+      await promote_chat_member(self.client, chat_id, user_id)
+    elif role_id == ChatMemberStatus.MEMBER.name.lower():
+      member = await self.client.get_chat_member(chat_id, user_id)
+      if member.status == ChatMemberStatus.OWNER:
+        raise ValueError('Changing from "owner" to "member" is not feasible.')
+      elif member.status == ChatMemberStatus.ADMINISTRATOR:
+        await demote_chat_member(self.client, chat_id, user_id)
+      elif member.status == ChatMemberStatus.BANNED:
+        raise ValueError('Changing from "banned" to "member" is not feasible.')
+      elif member.status == ChatMemberStatus.LEFT:
+        raise ValueError('Changing from "left" to "member" is not feasible.')
+      elif member.status == ChatMemberStatus.RESTRICTED:
+        await unrestrict_chat_member(self.client, chat_id, user_id)
+    elif role_id == ChatMemberStatus.RESTRICTED.name.lower():
+      await restrict_chat_member(self.client, chat_id, user_id)
+    elif role_id == ChatMemberStatus.LEFT.name.lower():
+      if user_id == self.me.tg.id:
+        await self.client.leave_chat(chat_id)
+      else:
+        await kick_chat_member(self.client, chat_id, user_id)
+    elif role_id == ChatMemberStatus.BANNED.name.lower():
+      await self.client.ban_chat_member(chat_id, user_id)
+    else:
+      raise ValueError("Invalid role.")
+
+  async def _route_guild_member_role_unset(self, request: Request[GuildMemberRoleParam]) -> None:
+    if not self.client or not self.me:
+      raise ValueError("Client not started")
+    chat_id = await resolve_peer(self.client, request.params["guild_id"])
+    user_id = await resolve_peer(self.client, request.params["user_id"])
+    role_id = request.params["role_id"]
+    if role_id == ChatMemberStatus.OWNER.name.lower():
+      raise ValueError('"owner" role cannot be unset.')
+    elif role_id == ChatMemberStatus.ADMINISTRATOR.name.lower():
+      await demote_chat_member(self.client, chat_id, user_id)
+    elif role_id == ChatMemberStatus.MEMBER.name.lower():
+      if user_id == self.me.tg.id:
+        await self.client.leave_chat(chat_id)
+      else:
+        await kick_chat_member(self.client, chat_id, user_id)
+    elif role_id == ChatMemberStatus.RESTRICTED.name.lower():
+      await unrestrict_chat_member(self.client, chat_id, user_id)
+    elif role_id == ChatMemberStatus.LEFT.name.lower():
+      raise ValueError('"left" role cannot be unset.')
+    elif role_id == ChatMemberStatus.BANNED.name.lower():
+      await self.client.unban_chat_member(chat_id, user_id)
+    else:
+      raise ValueError("Invalid role.")
 
   async def _route_guild_role_list(self, request: Request[GuildXXXListParam]) -> PageResult[Role]:
     if not self.client or not self.me:
@@ -719,9 +770,7 @@ class MTProtoAdapter(Adapter):
       raise ValueError("Client not started")
     user_id = await resolve_peer(self.client, request.params["user_id"])
     if -1000000000000 < user_id < 0:
-      raise ValueError(
-        "Only supergroups/channels can act like anonymous users, not regular groups."
-      )
+      raise ValueError("Only supergroups/channels can act like anonymous users, not basic groups.")
     chat = await self.client.get_chat(user_id)
     return parse_sender_chat(self.me.tg.id, chat)
 
