@@ -195,6 +195,21 @@ class MTProtoAdapter(Adapter):
     await asyncio.sleep(self.ignore_automatic_forward_interval)
     del self.ignore_automatic_forward_ids[channel_id, message_id]
 
+  def ignore_automatic_forward(self, message: Message) -> bool:
+    if self.ignore_automatic_forward_interval > 0 and message.chat and message.chat.id:
+      if message.chat.type == ChatType.CHANNEL:
+        self.ignore_automatic_forward_ids[message.chat.id, message.id] = asyncio.create_task(
+          self.remove_ignore_automatic_forward(message.chat.id, message.id)
+        )
+      elif (
+        message.automatic_forward
+        and isinstance(message.forward_origin, MessageOriginChannel)
+        and (message.forward_origin.chat.id, message.forward_origin.message_id)
+        in self.ignore_automatic_forward_ids
+      ):
+        return True
+    return False
+
   async def _on_message(self, client: Client, message: Message) -> None:
     if not self.me:
       raise ValueError("Client is not fully initalized.")
@@ -228,18 +243,8 @@ class MTProtoAdapter(Adapter):
       await self.storage.put_message(
         StoredMessage.from_message(self.me.tg.id, message, parsed.content)
       )
-    if self.ignore_automatic_forward_interval > 0 and message.chat and message.chat.id:
-      if message.chat.type == ChatType.CHANNEL:
-        self.ignore_automatic_forward_ids[message.chat.id, message.id] = asyncio.create_task(
-          self.remove_ignore_automatic_forward(message.chat.id, message.id)
-        )
-      elif (
-        message.automatic_forward
-        and isinstance(message.forward_origin, MessageOriginChannel)
-        and (message.forward_origin.chat.id, message.forward_origin.message_id)
-        in self.ignore_automatic_forward_ids
-      ):
-        return
+    if self.ignore_automatic_forward(message):
+      return
     if not message.date:
       raise ValueError("Message has no date.")
     event = Event(
@@ -269,6 +274,8 @@ class MTProtoAdapter(Adapter):
     await self.storage.put_message(
       StoredMessage.from_message(self.me.tg.id, message, parsed.content)
     )
+    if self.ignore_automatic_forward(message):
+      return
     if not message.edit_date:
       raise ValueError("Message has no date.")
     event = Event(
