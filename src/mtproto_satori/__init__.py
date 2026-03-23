@@ -8,6 +8,7 @@ from typing import Any, Literal, NotRequired, TypedDict, cast
 
 from launart import Launart
 from launart.status import Phase
+from loguru import logger
 from pyrogram.client import Client
 from pyrogram.enums import ChatMemberStatus, ChatType
 from pyrogram.file_id import FileId
@@ -478,6 +479,7 @@ class MTProtoAdapter(Adapter):
           await self.queue.put(event)
 
   async def _on_connect(self, client: Client, session: Session) -> None:
+    logger.debug("Connected to telegram.")
     if self.is_connected:
       return
     self.is_connected = True
@@ -489,7 +491,9 @@ class MTProtoAdapter(Adapter):
   async def _on_disconnect(self, client: Client, session: Session) -> None:
     # on_disconnected will be called when connection refused.
     if not self.is_connected:
+      logger.warning("Connect failed.")
       return
+    logger.warning("Disconnected from telegram.")
     self.is_connected = False
     if not self.me:
       return
@@ -920,6 +924,7 @@ class MTProtoAdapter(Adapter):
     async with self.stage("blocking"):
       await self.client.start()
       me = await self._update_me()
+      logger.debug(f"Logged in as {me.tg.full_name} ({me.tg.id}).")
       await self.queue.put(
         Event(
           EventType.LOGIN_ADDED,
