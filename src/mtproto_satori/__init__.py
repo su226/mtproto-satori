@@ -199,6 +199,8 @@ class MTProtoAdapter(Adapter):
   def ignore_automatic_forward(self, message: Message) -> bool:
     if self.ignore_automatic_forward_interval > 0 and message.chat and message.chat.id:
       if message.chat.type == ChatType.CHANNEL:
+        if task := self.ignore_automatic_forward_ids.get((message.chat.id, message.id)):
+          task.cancel()
         self.ignore_automatic_forward_ids[message.chat.id, message.id] = asyncio.create_task(
           self.remove_ignore_automatic_forward(message.chat.id, message.id)
         )
@@ -214,6 +216,7 @@ class MTProtoAdapter(Adapter):
   async def _on_message(self, client: Client, message: Message) -> None:
     if not self.me:
       raise ValueError("Client is not fully initalized.")
+    ignored = self.ignore_automatic_forward(message)
     if self.merge_media_groups_receive > 0 and message.media_group_id:
       if message.media_group_id in self.media_groups:
         _, messages = self.media_groups[message.media_group_id]
@@ -244,7 +247,7 @@ class MTProtoAdapter(Adapter):
       await self.storage.put_message(
         StoredMessage.from_message(self.me.tg.id, message, parsed.content)
       )
-    if self.ignore_automatic_forward(message):
+    if ignored:
       return
     if not message.date:
       raise ValueError("Message has no date.")
@@ -264,6 +267,7 @@ class MTProtoAdapter(Adapter):
   async def _on_edited_message(self, client: Client, message: Message) -> None:
     if not self.me:
       raise ValueError("Client is not fully initalized.")
+    ignored = self.ignore_automatic_forward(message)
     parsed = parse_message(self.me.tg, message)
     if message.chat and message.chat.id and message.chat.id < -1000000000000:
       before = await self.storage.get_channel_message(message.chat.id, message.id)
@@ -275,7 +279,7 @@ class MTProtoAdapter(Adapter):
     await self.storage.put_message(
       StoredMessage.from_message(self.me.tg.id, message, parsed.content)
     )
-    if self.ignore_automatic_forward(message):
+    if ignored:
       return
     if not message.edit_date:
       raise ValueError("Message has no date.")
@@ -805,16 +809,18 @@ class MTProtoAdapter(Adapter):
     if not self.client or not self.me:
       raise ValueError("Client not started")
     channel_id, thread_id = await resolve_channel_id(self.client, request.params["channel_id"])
-    messages = await send_message(
+    messages = list[MessageObject]()
+    async for tg, satori in send_message(
       self.client,
       self.me.tg,
       channel_id,
       thread_id,
       request.params["content"],
-    )
-    for tg, satori in messages:
+    ):
       await self.storage.put_message(StoredMessage.from_message(self.me.tg.id, tg, satori.content))
-    return [satori for _, satori in messages]
+      self.ignore_automatic_forward(tg)
+      messages.append(satori)
+    return messages
 
   async def _route_message_get(self, request: Request[MessageOpParam]) -> MessageObject:
     if not self.client or not self.me:
@@ -856,6 +862,7 @@ class MTProtoAdapter(Adapter):
       message_id,
       request.params["content"],
     )
+    self.ignore_automatic_forward(tg)
     await self.storage.put_message(StoredMessage.from_message(self.me.tg.id, tg, satori.content))
 
   async def _route_reaction_create(self, request: Request[ReactionCreateParam]) -> None:

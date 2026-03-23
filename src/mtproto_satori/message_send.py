@@ -1,7 +1,7 @@
 import base64
 import mimetypes
 import re
-from collections.abc import Iterable
+from collections.abc import AsyncGenerator, Iterable
 from dataclasses import dataclass, field
 from io import BytesIO
 from itertools import chain
@@ -387,7 +387,7 @@ async def send_message(
   channel_id: int,
   thread_id: int | None,
   message: str,
-) -> list[tuple[Message, MessageObject]]:
+) -> AsyncGenerator[tuple[Message, MessageObject], None]:
   elements = parse(message)
   emojis = await fetch_emojis(client, extract_emojis_without_name(elements))
   users = await fetch_users(client, extract_users_without_id_or_name(elements))
@@ -395,7 +395,6 @@ async def send_message(
   encoder.render(elements)
   encoder.flush()
 
-  all_results = list[Message]()
   for pack in encoder.packs:
     if pack.asset:
       animations = list[InputMediaAnimation]()
@@ -422,8 +421,6 @@ async def send_message(
           file = await get_media(client.name, src, title, timeout)
           others.append(InputMediaDocument(file))
 
-      results = list[Message]()
-
       has_buttons = pack.rows and pack.rows[0]
       if not has_buttons:
         if others:
@@ -433,46 +430,47 @@ async def send_message(
           animations[0].caption = pack.content
           animations[0].parse_mode = cast(str, ParseMode.HTML)
 
+      first: int | None = None
+      reply = int(pack.reply) if pack.reply else cast(int, None)
+
       if others:
-        result = await client.send_media_group(
+        group = await client.send_media_group(
           channel_id,
           others,
-          reply_to_message_id=int(pack.reply) if pack.reply else cast(int, None),
-          message_thread_id=cast(int, thread_id),
-        )
-        results.extend(result)
-
-      for file in animations:
-        if results:
-          reply = results[0].id
-        elif pack.reply:
-          reply = int(pack.reply)
-        else:
-          reply = cast(int, None)
-        result = await client.send_animation(
-          channel_id,
-          file.media,
-          file.caption,
-          parse_mode=ParseMode.HTML,
-          has_spoiler=file.has_spoiler,
           reply_to_message_id=reply,
           message_thread_id=cast(int, thread_id),
         )
-        results.append(cast(Message, result))
+        first = group[0].id
+        for result in group:
+          yield (result, parse_message(me, result))
+
+      for file in animations:
+        result = cast(
+          Message,
+          await client.send_animation(
+            channel_id,
+            file.media,
+            file.caption,
+            parse_mode=ParseMode.HTML,
+            has_spoiler=file.has_spoiler,
+            reply_to_message_id=first or reply,
+            message_thread_id=cast(int, thread_id),
+          ),
+        )
+        if not first:
+          first = result.id
+        yield (result, parse_message(me, result))
 
       if has_buttons:
-        results.append(
-          await client.send_message(
-            channel_id,
-            pack.content,
-            ParseMode.HTML,
-            reply_to_message_id=results[0].id,
-            reply_markup=InlineKeyboardMarkup(pack.rows),
-            message_thread_id=cast(int, thread_id),
-          )
+        result = await client.send_message(
+          channel_id,
+          pack.content,
+          ParseMode.HTML,
+          reply_to_message_id=first,
+          reply_markup=InlineKeyboardMarkup(pack.rows),
+          message_thread_id=cast(int, thread_id),
         )
-
-      all_results.extend(results)
+        yield (result, parse_message(me, result))
     elif pack.forward:
       split_id = pack.forward.split(":", 1)
       if len(split_id) == 2:
@@ -490,7 +488,7 @@ async def send_message(
           cast(int, thread_id),
         ),
       )
-      all_results.append(result)
+      yield (result, parse_message(me, result))
     else:
       result = await client.send_message(
         channel_id,
@@ -502,9 +500,7 @@ async def send_message(
         if pack.rows and pack.rows[0]
         else cast(InlineKeyboardMarkup, None),
       )
-      all_results.append(result)
-
-  return [(message, parse_message(me, message)) for message in all_results]
+      yield (result, parse_message(me, result))
 
 
 async def update_message(
