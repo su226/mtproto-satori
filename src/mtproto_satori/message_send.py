@@ -221,9 +221,9 @@ class MessageEncoder:
       self.render(element.children)
       self.current.content += f"</{element.type}>"
     elif element.type == "spl":
-      self.current.content += "<tg-spoiler>"
+      self.current.content += "<spoiler>"
       self.render(element.children)
-      self.current.content += "</tg-spoiler>"
+      self.current.content += "</spoiler>"
     elif element.type == "code":
       self.current.content += "<code>"
       if "content" in element.attrs:
@@ -233,12 +233,12 @@ class MessageEncoder:
       self.current.content += "</code>"
     elif element.type in ("pre", "code-block"):
       if lang := element.attrs.get("lang"):
-        attrs = f' class="language-{escape(lang, True)}"'
+        attrs = f' language="{escape(lang, True)}"'
       else:
         attrs = ""
-      self.current.content += f"<pre><code{attrs}>"
+      self.current.content += f"<pre{attrs}>"
       self.render(element.children)
-      self.current.content += "</code></pre>"
+      self.current.content += "</pre>"
     elif element.type == "at":
       if id_or_username := element.attrs.get("id"):
         try:
@@ -257,7 +257,7 @@ class MessageEncoder:
       if id := element.attrs.get("id"):
         id = int(id)
         name = element.attrs.get("name") or self._get_emoji_name(id) or "😀"
-        self.current.content += f'<tg-emoji emoji-id="{id}">{escape(name)}</tg-emoji>'
+        self.current.content += f'<emoji id="{id}">{escape(name)}</emoji>'
     elif element.type in ("img", "image", "audio", "video", "file"):
       self.current.asset.append(element)
     elif element.type == "figure":
