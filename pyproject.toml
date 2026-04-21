@@ -8,10 +8,11 @@ authors = [
 ]
 requires-python = ">=3.14"
 dependencies = [
-    "kurigram>=2.2.19",
-    "pillow>=12.1.1",
-    "puremagic>=2.1.0",
-    "satori-python-server>=1.3.0",
+    "kurigram>=2.2.22",
+    "pillow>=12.2.0",
+    "puremagic>=2.2.0",
+    "satori-python-core>=1.3.2,!=1.3.3",
+    "satori-python-server>=1.3.2,!=1.3.3",
     "tgcrypto>=1.2.5",
 ]
 
