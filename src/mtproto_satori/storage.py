@@ -78,7 +78,7 @@ def serialize_reactions(reactions: list[Reaction]) -> StoredReactions:
       if reaction.emoji:
         result[reaction.emoji] = reaction.count
       if reaction.custom_emoji_id:
-        result[str(reaction.custom_emoji_id)] = reaction.count
+        result[reaction.custom_emoji_id] = reaction.count
       if reaction.is_paid:
         result["paid"] = reaction.count
   return result

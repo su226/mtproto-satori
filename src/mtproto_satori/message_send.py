@@ -177,14 +177,14 @@ class MessagePack:
 
 
 class MessageEncoder:
-  def __init__(self, emojis: dict[int, Sticker], users: dict[int | str, User]) -> None:
+  def __init__(self, emojis: dict[str, Sticker], users: dict[int | str, User]) -> None:
     self.current = MessagePack()
     self.packs = list[MessagePack]()
     self.mode: Literal["figure", "default"] = "default"
     self.emojis = emojis
     self.users = users
 
-  def _get_emoji_name(self, emoji_id: int) -> str | None:
+  def _get_emoji_name(self, emoji_id: str) -> str | None:
     if emoji := self.emojis.get(emoji_id):
       return emoji.emoji
     return None
@@ -255,7 +255,6 @@ class MessageEncoder:
           self.current.content += f'<a href="tg://user?id={id}">{escape(display)}</a>'
     elif element.type == "emoji":
       if id := element.attrs.get("id"):
-        id = int(id)
         name = element.attrs.get("name") or self._get_emoji_name(id) or "😀"
         self.current.content += f'<emoji id="{id}">{escape(name)}</emoji>'
     elif element.type in ("img", "image", "audio", "video", "file"):
@@ -329,13 +328,13 @@ class MessageEncoder:
       self.visit(element)
 
 
-def extract_emojis_without_name(element: Element | Iterable[Element]) -> set[int]:
+def extract_emojis_without_name(element: Element | Iterable[Element]) -> set[str]:
   if isinstance(element, Element):
     if element.type == "emoji":
       emoji_id = element.attrs.get("id")
       if emoji_id and not element.attrs.get("name"):
         try:
-          return {int(emoji_id)}
+          return {emoji_id}
         except ValueError:
           pass
       return set()
@@ -343,7 +342,7 @@ def extract_emojis_without_name(element: Element | Iterable[Element]) -> set[int
   return set(chain.from_iterable(extract_emojis_without_name(element) for element in element))
 
 
-async def fetch_emojis(client: Client, emojis: set[int]) -> dict[int, Sticker]:
+async def fetch_emojis(client: Client, emojis: set[str]) -> dict[str, Sticker]:
   return (
     {
       sticker.custom_emoji_id: sticker
@@ -445,6 +444,8 @@ async def send_message(
           yield (result, parse_message(me, result))
 
       for file in animations:
+        if not file.media:
+          continue
         result = cast(
           Message,
           await client.send_animation(
@@ -452,7 +453,7 @@ async def send_message(
             file.media,
             file.caption,
             parse_mode=ParseMode.HTML,
-            has_spoiler=file.has_spoiler,
+            has_spoiler=file.has_spoiler or False,
             reply_to_message_id=first or reply,
             message_thread_id=cast(int, thread_id),
           ),
@@ -468,7 +469,7 @@ async def send_message(
           ParseMode.HTML,
           reply_to_message_id=first,
           reply_markup=InlineKeyboardMarkup(pack.rows),
-          message_thread_id=cast(int, thread_id),
+          message_thread_id=thread_id,
         )
         yield (result, parse_message(me, result))
     elif pack.forward:
@@ -494,11 +495,9 @@ async def send_message(
         channel_id,
         pack.content,
         ParseMode.HTML,
-        reply_to_message_id=int(pack.reply) if pack.reply else cast(int, None),
-        message_thread_id=cast(int, thread_id),
-        reply_markup=InlineKeyboardMarkup(pack.rows)
-        if pack.rows and pack.rows[0]
-        else cast(InlineKeyboardMarkup, None),
+        reply_to_message_id=int(pack.reply) if pack.reply else None,
+        message_thread_id=thread_id,
+        reply_markup=InlineKeyboardMarkup(pack.rows) if pack.rows and pack.rows[0] else None,
       )
       yield (result, parse_message(me, result))
 

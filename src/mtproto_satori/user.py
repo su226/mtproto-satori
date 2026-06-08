@@ -74,7 +74,7 @@ def parse_reaction(reaction: Reaction) -> EmojiObject:
   if reaction.emoji:
     return EmojiObject(reaction.emoji)
   if reaction.custom_emoji_id:
-    return EmojiObject(str(reaction.custom_emoji_id))
+    return EmojiObject(reaction.custom_emoji_id)
   if reaction.is_paid:
     return EmojiObject("paid")
   raise ValueError("Invalid reaction.")

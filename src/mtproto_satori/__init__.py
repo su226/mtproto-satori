@@ -967,7 +967,7 @@ class MTProtoAdapter(Adapter):
   async def _update_me(self) -> Me:
     assert self.client
     user = await self.client.get_me()
-    self.me = Me(user, Login(0, LoginStatus.ONLINE, ADAPTER, PLATFORM, parse_user(user.id, user)))
+    self.me = Me(user, Login(adapter=ADAPTER, platform=PLATFORM, user=parse_user(user.id, user)))
     return self.me
 
   async def get_logins(self) -> list[LoginType]:

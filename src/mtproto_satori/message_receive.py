@@ -53,7 +53,7 @@ class Status:
   mention: bool = False
   link: str | None = None
   user: TGUser | None = None
-  emoji: int | None = None
+  emoji: str | None = None
 
 
 def parse_text(text: str, entities: list[MessageEntity] | None) -> list[Element]:
@@ -115,7 +115,7 @@ def parse_text(text: str, entities: list[MessageEntity] | None) -> list[Element]
         new_element.children.append(element)
         element = new_element
       if status.emoji:
-        element = Emoji(str(status.emoji), name=content)
+        element = Emoji(status.emoji, name=content)
       if content == "\n":
         element = Br()
       elements.append(element)
