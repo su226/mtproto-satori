@@ -15,12 +15,21 @@ CREATE TABLE reactions(
 );
 """
 
+UPDATE_SCHEMA_2_TO_3 = """
+CREATE TABLE topics(
+  chat_id INTEGER NOT NULL,
+  topic_id INTEGER NOT NULL,
+  title TEXT NOT NULL,
+  PRIMARY KEY(chat_id, topic_id)
+);
+"""
+
 SCHEMA = f"""
 CREATE TABLE metadata(
   version INTEGER
 );
 
-INSERT INTO metadata(version) VALUES (2);
+INSERT INTO metadata(version) VALUES (3);
 
 CREATE TABLE messages(
   chat_id INTEGER NOT NULL,
@@ -39,6 +48,7 @@ CREATE TABLE channel_messages(
 );
 
 {UPDATE_SCHEMA_1_TO_2}
+{UPDATE_SCHEMA_2_TO_3}
 """
 
 
@@ -71,6 +81,13 @@ class StoredMessage:
 StoredReactions = dict[str, int]
 
 
+@dataclass
+class StoredTopic:
+  chat_id: int
+  topic_id: int
+  title: str
+
+
 def serialize_reactions(reactions: list[Reaction]) -> StoredReactions:
   result = StoredReactions()
   for reaction in reactions:
@@ -100,10 +117,14 @@ class SqliteStorage:
 
   async def __upgrade(self) -> None:
     (version,) = self.conn.execute("SELECT version FROM metadata").fetchone()
-    if version == 1:
+    if version <= 1:
       with self.conn:
         self.conn.executescript(UPDATE_SCHEMA_1_TO_2)
-        self.conn.execute("UPDATE metadata SET version = 2")
+    if version <= 2:
+      with self.conn:
+        self.conn.executescript(UPDATE_SCHEMA_2_TO_3)
+    with self.conn:
+      self.conn.execute("UPDATE metadata SET version = 3")
 
   async def close(self) -> None:
     self.conn.close()
@@ -226,3 +247,46 @@ class SqliteStorage:
           "UPDATE reactions SET reactions = ? WHERE chat_id = ? AND message_id = ?",
           (reactions_json, chat_id, message_id),
         )
+
+  async def get_topic(self, chat_id: int, topic_id: int) -> StoredTopic | None:
+    result = self.conn.execute(
+      """
+      SELECT chat_id, topic_id, title FROM topics
+      WHERE chat_id = ? AND topic_id = ?
+      """,
+      (chat_id, topic_id),
+    ).fetchone()
+    if not result:
+      return None
+    chat_id, topic_id, title = result
+    return StoredTopic(chat_id, topic_id, title)
+
+  async def put_topic(self, topic: StoredTopic) -> None:
+    with self.conn:
+      try:
+        self.conn.execute(
+          """
+          INSERT INTO topics(chat_id, topic_id, title)
+          VALUES (?, ?, ?)
+          """,
+          (topic.chat_id, topic.topic_id, topic.title),
+        )
+      except sqlite3.IntegrityError:
+        self.conn.execute(
+          """
+          UPDATE topics
+          SET title = ?
+          WHERE chat_id = ? AND topic_id = ?
+          """,
+          (topic.title, topic.chat_id, topic.topic_id),
+        )
+
+  async def del_topic(self, topic: StoredTopic) -> None:
+    with self.conn:
+      self.conn.execute(
+        """
+        DELETE FROM topics
+        WHERE chat_id = ? AND topic_id = ?
+        """,
+        (topic.chat_id, topic.topic_id),
+      )

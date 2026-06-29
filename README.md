@@ -130,7 +130,7 @@ Methods not usable by bots are **UNTESTED**, since I only use this on bots, use 
 
 - [x] channel-added
 - [x] channel-updated
-- [ ] channel-removed
+- [x] channel-removed (Limited on bots)[^2]
 - [ ] guild-emoji-added (Not supported in Telegram)
 - [ ] guild-emoji-updated (Not supported in Telegram)
 - [ ] guild-emoji-deleted (Not supported in Telegram)

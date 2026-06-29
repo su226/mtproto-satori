@@ -97,6 +97,7 @@ from mtproto_satori.storage import (
   SqliteStorage,
   StoredMessage,
   StoredReactions,
+  StoredTopic,
   serialize_reactions,
 )
 from mtproto_satori.user import (
@@ -308,6 +309,18 @@ class MTProtoAdapter(Adapter):
     now = datetime.now()
     for message in messages:
       if message.chat and message.chat.id:
+        topic = await self.storage.get_topic(message.chat.id, message.id)
+        if topic:
+          event = Event(
+            EventType.CHANNEL_REMOVED,
+            now,
+            self.me.satori,
+            channel=Channel(f"{topic.chat_id}:{topic.topic_id}"),
+            guild=Guild(str(topic.chat_id)),
+          )
+          await self.queue.put(event)
+          await self.storage.del_topic(topic)
+          return
         stored = await self.storage.get_channel_message(message.chat.id, message.id)
       else:
         stored = await self.storage.get_message(message.id)
@@ -333,10 +346,13 @@ class MTProtoAdapter(Adapter):
       raise ValueError("Client is not fully initalized.")
     if not message.forum_topic_created:
       raise ValueError("Should be a forum_topic_created service message.")
-    if not message.chat:
+    if not message.chat or not message.chat.id:
       raise ValueError("Message has no chat.")
     if not message.date:
       raise ValueError("Message has no date.")
+    await self.storage.put_topic(
+      StoredTopic(message.chat.id, message.id, message.forum_topic_created.title)
+    )
     guild = parse_guild(self.me.tg.id, message.chat)
     channel = Channel(f"{message.chat.id}:{message.id}", name=message.forum_topic_created.title)
     event = Event(
@@ -351,14 +367,20 @@ class MTProtoAdapter(Adapter):
   async def _on_topic_edited(self, client: Client, message: Message) -> None:
     if not self.me:
       raise ValueError("Client is not fully initalized.")
-    if not message.forum_topic_edited:
+    if not message.forum_topic_edited or not message.message_thread_id:
       raise ValueError("Should be a forum_topic_edited service message.")
-    if not message.chat:
+    if not message.chat or not message.chat.id:
       raise ValueError("Message has no chat.")
     if not message.date:
       raise ValueError("Message has no date.")
+    await self.storage.put_topic(
+      StoredTopic(message.chat.id, message.message_thread_id, message.forum_topic_edited.title)
+    )
     guild = parse_guild(self.me.tg.id, message.chat)
-    channel = Channel(f"{message.chat.id}:{message.id}", name=message.forum_topic_edited.title)
+    channel = Channel(
+      f"{message.chat.id}:{message.message_thread_id}",
+      name=message.forum_topic_edited.title,
+    )
     event = Event(
       EventType.CHANNEL_UPDATED,
       message.date,
