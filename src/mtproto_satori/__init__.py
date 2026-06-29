@@ -9,25 +9,28 @@ from typing import Any, Literal, NotRequired, TypedDict, cast
 from launart import Launart
 from launart.status import Phase
 from loguru import logger
+from pyrogram import filters
 from pyrogram.client import Client
 from pyrogram.enums import ChatMemberStatus, ChatType
 from pyrogram.file_id import FileId
-from pyrogram.raw.base.chat import Chat as RawChat
-from pyrogram.raw.base.update import Update as RawUpdate
-from pyrogram.raw.base.user import User as RawUser
-from pyrogram.raw.functions.channels.get_participants import GetParticipants
-from pyrogram.raw.functions.messages.get_full_chat import GetFullChat
-from pyrogram.raw.types.channel_full import ChannelFull
-from pyrogram.raw.types.channel_participants_search import ChannelParticipantsSearch
-from pyrogram.raw.types.channels.channel_participants_not_modified import (
+from pyrogram.raw.base import Chat as RawChat
+from pyrogram.raw.base import Update as RawUpdate
+from pyrogram.raw.base import User as RawUser
+from pyrogram.raw.functions.channels import GetParticipants
+from pyrogram.raw.functions.messages import GetFullChat
+from pyrogram.raw.types import (
+  ChannelFull,
+  ChannelParticipantsSearch,
+  ChatParticipantsForbidden,
+  InputChannel,
+  InputPeerChannel,
+  InputPeerChat,
+  UpdateUser,
+  UpdateUserName,
+)
+from pyrogram.raw.types.channels import (
   ChannelParticipantsNotModified,
 )
-from pyrogram.raw.types.chat_participants_forbidden import ChatParticipantsForbidden
-from pyrogram.raw.types.input_channel import InputChannel
-from pyrogram.raw.types.input_peer_channel import InputPeerChannel
-from pyrogram.raw.types.input_peer_chat import InputPeerChat
-from pyrogram.raw.types.update_user import UpdateUser
-from pyrogram.raw.types.update_user_name import UpdateUserName
 from pyrogram.session.session import Session
 from pyrogram.types import (
   CallbackQuery,
@@ -82,7 +85,12 @@ from satori.server.route import (
 from starlette.responses import Response, StreamingResponse
 
 from mtproto_satori.const import ADAPTER, PLATFORM
-from mtproto_satori.message_receive import is_my_command, parse_elements, parse_message
+from mtproto_satori.message_receive import (
+  filter_normal_message,
+  is_my_command,
+  parse_elements,
+  parse_message,
+)
 from mtproto_satori.message_send import send_message, update_message
 from mtproto_satori.storage import (
   SqliteStorage,
@@ -377,29 +385,51 @@ class MTProtoAdapter(Adapter):
       guild = parse_guild(self.me.tg.id, update.chat)
       member = parse_member(self.me.tg.id, update.old_chat_member)
       operator = parse_user(self.me.tg.id, update.from_user)
-      event = Event(
-        EventType.GUILD_MEMBER_REMOVED,
-        update.date,
-        self.me.satori,
-        guild=guild,
-        member=member,
-        user=member.user,
-        operator=operator,
-      )
+      if update.old_chat_member.user.id == self.me.tg.id:
+        event = Event(
+          EventType.GUILD_REMOVED,
+          update.date,
+          self.me.satori,
+          guild=guild,
+          member=member,
+          user=member.user,
+          operator=operator,
+        )
+      else:
+        event = Event(
+          EventType.GUILD_MEMBER_REMOVED,
+          update.date,
+          self.me.satori,
+          guild=guild,
+          member=member,
+          user=member.user,
+          operator=operator,
+        )
       await self.queue.put(event)
     elif update.new_chat_member:
       guild = parse_guild(self.me.tg.id, update.chat)
       member = parse_member(self.me.tg.id, update.new_chat_member)
       operator = parse_user(self.me.tg.id, update.from_user)
-      event = Event(
-        EventType.GUILD_MEMBER_ADDED,
-        update.date,
-        self.me.satori,
-        guild=guild,
-        member=member,
-        user=member.user,
-        operator=operator,
-      )
+      if update.new_chat_member.user.id == self.me.tg.id:
+        event = Event(
+          EventType.GUILD_ADDED,
+          update.date,
+          self.me.satori,
+          guild=guild,
+          member=member,
+          user=member.user,
+          operator=operator,
+        )
+      else:
+        event = Event(
+          EventType.GUILD_MEMBER_ADDED,
+          update.date,
+          self.me.satori,
+          guild=guild,
+          member=member,
+          user=member.user,
+          operator=operator,
+        )
       await self.queue.put(event)
 
   async def _on_message_reaction(self, client: Client, reaction: MessageReactionUpdated) -> None:
@@ -919,8 +949,8 @@ class MTProtoAdapter(Adapter):
         password=self.password,
         workdir=Path.cwd(),
       )
-      self.client.on_message()(self._on_message)
-      self.client.on_edited_message()(self._on_edited_message)
+      self.client.on_message(filters.create(filter_normal_message))(self._on_message)
+      self.client.on_edited_message(filters.create(filter_normal_message))(self._on_edited_message)
       self.client.on_deleted_messages()(self._on_deleted_messages)
       self.client.on_callback_query()(self._on_callback_query)
       self.client.on_chat_join_request()(self._on_chat_join_request)

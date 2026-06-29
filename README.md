@@ -131,14 +131,14 @@ Methods not usable by bots are **UNTESTED**, since I only use this on bots, use 
 - [ ] channel-added
 - [ ] channel-updated
 - [ ] channel-removed
-- [ ] guild-emoji-added
-- [ ] guild-emoji-updated
-- [ ] guild-emoji-deleted
-- [ ] friend-request
-- [ ] guild-added
+- [ ] guild-emoji-added (Not supported in Telegram)
+- [ ] guild-emoji-updated (Not supported in Telegram)
+- [ ] guild-emoji-deleted (Not supported in Telegram)
+- [ ] friend-request (Not supported in Telegram)
+- [x] guild-added
 - [ ] guild-updated
-- [ ] guild-removed
-- [ ] guild-request
+- [x] guild-removed
+- [ ] guild-request (Not supported in Telegram)
 - [x] guild-member-added ([Not usable by users](https://docs.kurigram.icu/api/decorators/#pyrogram.Client.on_chat_member_updated))
 - [x] guild-member-updated ([Not usable by users](https://docs.kurigram.icu/api/decorators/#pyrogram.Client.on_chat_member_updated))
 - [x] guild-member-removed ([Not usable by users](https://docs.kurigram.icu/api/decorators/#pyrogram.Client.on_chat_member_updated))

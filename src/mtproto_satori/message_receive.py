@@ -1,7 +1,9 @@
 from dataclasses import dataclass
 from typing import Any, Literal, cast
 
+from pyrogram.client import Client
 from pyrogram.enums import MessageEntityType
+from pyrogram.filters import Filter
 from pyrogram.types import Message, MessageEntity
 from pyrogram.types import User as TGUser
 from satori.element import (
@@ -246,6 +248,20 @@ def parse_message(me: TGUser, message: Message) -> MessageObject:
     user,
     message.date,
     message.edit_date,
+  )
+
+
+def filter_normal_message(filter: Filter, client: Client, message: Message) -> bool:
+  return (
+    message.text is not None
+    or message.location is not None
+    or message.photo is not None
+    or message.sticker is not None
+    or message.voice is not None
+    or message.animation is not None
+    or message.video is not None
+    or message.document is not None
+    or message.audio is not None
   )
 
 
