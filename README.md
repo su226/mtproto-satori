@@ -136,7 +136,7 @@ Methods not usable by bots are **UNTESTED**, since I only use this on bots, use 
 - [ ] guild-emoji-deleted (Not supported in Telegram)
 - [ ] friend-request (Not supported in Telegram)
 - [x] guild-added
-- [ ] guild-updated
+- [x] guild-updated
 - [x] guild-removed
 - [ ] guild-request (Not supported in Telegram)
 - [x] guild-member-added ([Not usable by users](https://docs.kurigram.icu/api/decorators/#pyrogram.Client.on_chat_member_updated))

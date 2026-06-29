@@ -277,6 +277,15 @@ def filter_topic_edited(filter: Filter, client: Client, message: Message) -> boo
   return message.forum_topic_edited is not None
 
 
+@filters.create
+def filter_chat_edited(filter: Filter, client: Client, message: Message) -> bool:
+  return (
+    message.new_chat_title is not None
+    or message.new_chat_photo is not None
+    or message.delete_chat_photo is not None
+  )
+
+
 def is_my_command(message: Message, user: TGUser) -> bool:
   if not message.text or not message.entities or not user.is_bot:
     return False

@@ -85,6 +85,7 @@ from starlette.responses import Response, StreamingResponse
 
 from mtproto_satori.const import ADAPTER, PLATFORM
 from mtproto_satori.message_receive import (
+  filter_chat_edited,
   filter_normal_message,
   filter_topic_created,
   filter_topic_edited,
@@ -388,6 +389,25 @@ class MTProtoAdapter(Adapter):
       guild=guild,
       channel=channel,
     )
+    await self.queue.put(event)
+
+  async def _on_chat_edited(self, client: Client, message: Message) -> None:
+    if not self.me:
+      raise ValueError("Client is not fully initalized.")
+    if not message.chat:
+      raise ValueError("Message has no chat.")
+    if not message.date:
+      raise ValueError("Message has no date.")
+    guild = parse_guild(self.me.tg.id, message.chat)
+    operator = parse_user(self.me.tg.id, message.from_user) if message.from_user else None
+    event = Event(
+      EventType.GUILD_UPDATED,
+      message.date,
+      self.me.satori,
+      guild=guild,
+      operator=operator,
+    )
+    print(event)
     await self.queue.put(event)
 
   async def _on_callback_query(self, client: Client, callback: CallbackQuery) -> None:
@@ -1017,6 +1037,7 @@ class MTProtoAdapter(Adapter):
       self.client.on_deleted_messages()(self._on_deleted_messages)
       self.client.on_message(filter_topic_created)(self._on_topic_created)
       self.client.on_message(filter_topic_edited)(self._on_topic_edited)
+      self.client.on_message(filter_chat_edited)(self._on_chat_edited)
       self.client.on_callback_query()(self._on_callback_query)
       self.client.on_chat_join_request()(self._on_chat_join_request)
       self.client.on_chat_member_updated()(self._on_chat_member_updated)
