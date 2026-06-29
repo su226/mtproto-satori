@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from typing import Any, Literal, cast
 
+from pyrogram import filters
 from pyrogram.client import Client
 from pyrogram.enums import MessageEntityType
 from pyrogram.filters import Filter
@@ -251,6 +252,7 @@ def parse_message(me: TGUser, message: Message) -> MessageObject:
   )
 
 
+@filters.create
 def filter_normal_message(filter: Filter, client: Client, message: Message) -> bool:
   return (
     message.text is not None
@@ -263,6 +265,11 @@ def filter_normal_message(filter: Filter, client: Client, message: Message) -> b
     or message.document is not None
     or message.audio is not None
   )
+
+
+@filters.create
+def filter_topic_created(filter: Filter, client: Client, message: Message) -> bool:
+  return message.forum_topic_created is not None
 
 
 def is_my_command(message: Message, user: TGUser) -> bool:

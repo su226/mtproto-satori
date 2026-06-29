@@ -9,7 +9,6 @@ from typing import Any, Literal, NotRequired, TypedDict, cast
 from launart import Launart
 from launart.status import Phase
 from loguru import logger
-from pyrogram import filters
 from pyrogram.client import Client
 from pyrogram.enums import ChatMemberStatus, ChatType
 from pyrogram.file_id import FileId
@@ -87,6 +86,7 @@ from starlette.responses import Response, StreamingResponse
 from mtproto_satori.const import ADAPTER, PLATFORM
 from mtproto_satori.message_receive import (
   filter_normal_message,
+  filter_topic_created,
   is_my_command,
   parse_elements,
   parse_message,
@@ -326,6 +326,27 @@ class MTProtoAdapter(Adapter):
       )
       await self.queue.put(event)
       await self.storage.del_message(stored)
+
+  async def _on_topic_created(self, client: Client, message: Message) -> None:
+    if not self.me:
+      raise ValueError("Client is not fully initalized.")
+    if not message.forum_topic_created:
+      raise ValueError("Should be a forum_topic_created service message.")
+    if not message.chat:
+      raise ValueError("Message has no chat.")
+    if not message.date:
+      raise ValueError("Message has no date.")
+    guild = parse_guild(self.me.tg.id, message.chat)
+    channel = Channel(f"{message.chat.id}:{message.id}", name=message.forum_topic_created.title)
+    event = Event(
+      EventType.CHANNEL_ADDED,
+      message.date,
+      self.me.satori,
+      guild=guild,
+      channel=channel,
+    )
+    print(event)
+    await self.queue.put(event)
 
   async def _on_callback_query(self, client: Client, callback: CallbackQuery) -> None:
     if not self.me:
@@ -949,9 +970,10 @@ class MTProtoAdapter(Adapter):
         password=self.password,
         workdir=Path.cwd(),
       )
-      self.client.on_message(filters.create(filter_normal_message))(self._on_message)
-      self.client.on_edited_message(filters.create(filter_normal_message))(self._on_edited_message)
+      self.client.on_message(filter_normal_message)(self._on_message)
+      self.client.on_edited_message(filter_normal_message)(self._on_edited_message)
       self.client.on_deleted_messages()(self._on_deleted_messages)
+      self.client.on_message(filter_topic_created)(self._on_topic_created)
       self.client.on_callback_query()(self._on_callback_query)
       self.client.on_chat_join_request()(self._on_chat_join_request)
       self.client.on_chat_member_updated()(self._on_chat_member_updated)
