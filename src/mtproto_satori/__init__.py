@@ -654,6 +654,7 @@ class MTProtoAdapter(Adapter):
       raise ValueError("Client not started")
     chat_id = await resolve_peer(self.client, request.params["guild_id"])
     topic = await self.client.create_forum_topic(chat_id, request.params["data"].get("name", ""))
+    await self.storage.put_topic(StoredTopic(chat_id, topic.id, topic.title))
     return Channel(f"{chat_id}:{topic.id}", ChannelType.TEXT, topic.title)
 
   async def _route_channel_update(self, request: Request[ChannelUpdateParam]) -> None:
@@ -664,6 +665,7 @@ class MTProtoAdapter(Adapter):
       raise ValueError("Not a forum topic.")
     title = request.params["data"].get("name", "")
     await self.client.edit_forum_topic(chat_id, thread_id, title)
+    await self.storage.put_topic(StoredTopic(chat_id, thread_id, title))
 
   async def _route_channel_delete(self, request: Request[ChannelParam]) -> None:
     if not self.client or not self.me:
@@ -672,6 +674,9 @@ class MTProtoAdapter(Adapter):
     if not thread_id:
       raise ValueError("Not a forum topic.")
     await self.client.delete_forum_topic(chat_id, thread_id)
+    stored = await self.storage.get_topic(chat_id, thread_id)
+    if stored:
+      await self.storage.del_topic(stored)
 
   async def _route_channel_mute(self, request: Request[ChannelMuteParam]) -> None:
     if not self.client or not self.me:
@@ -957,6 +962,12 @@ class MTProtoAdapter(Adapter):
     count = await self.client.delete_messages(channel_id, message_id)
     if not count:
       raise ValueError("Message not exist.")
+    if channel_id < -1000000000000:
+      stored = await self.storage.get_channel_message(channel_id, message_id)
+    else:
+      stored = await self.storage.get_message(message_id)
+    if stored:
+      await self.storage.del_message(stored)
 
   async def _route_message_update(self, request: Request[MessageUpdateParam]) -> None:
     if not self.client or not self.me:
