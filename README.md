@@ -129,7 +129,7 @@ Methods not usable by bots are **UNTESTED**, since I only use this on bots, use 
 ### Event
 
 - [x] channel-added
-- [ ] channel-updated
+- [x] channel-updated
 - [ ] channel-removed
 - [ ] guild-emoji-added (Not supported in Telegram)
 - [ ] guild-emoji-updated (Not supported in Telegram)

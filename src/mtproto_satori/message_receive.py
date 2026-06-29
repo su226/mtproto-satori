@@ -272,6 +272,11 @@ def filter_topic_created(filter: Filter, client: Client, message: Message) -> bo
   return message.forum_topic_created is not None
 
 
+@filters.create
+def filter_topic_edited(filter: Filter, client: Client, message: Message) -> bool:
+  return message.forum_topic_edited is not None
+
+
 def is_my_command(message: Message, user: TGUser) -> bool:
   if not message.text or not message.entities or not user.is_bot:
     return False
