@@ -51,7 +51,6 @@ from satori import (
   EventType,
   Guild,
   Login,
-  LoginStatus,
   Member,
   MessageObject,
   PageResult,
@@ -892,14 +891,19 @@ class MTProtoAdapter(Adapter):
       raise ValueError("Client not started")
     if request.params["emoji_id"].startswith("paid"):
       raise ValueError("Cannot retract paid reaction.")
-    if user_id := request.params.get("user_id"):
-      if await resolve_peer(self.client, user_id) != self.me.tg.id:
-        raise ValueError("Cannot retract other's reaction.")
     chat_id, message_id = await resolve_channel_message_id(
       self.client,
       request.params["channel_id"],
       request.params["message_id"],
     )
+    if user_id := request.params.get("user_id"):
+      peer_id = await resolve_peer(self.client, user_id)
+      if peer_id != self.me.tg.id:
+        if peer_id < 0:
+          await self.client.delete_message_reaction(chat_id, message_id, actor_chat_id=peer_id)
+        else:
+          await self.client.delete_message_reaction(chat_id, message_id, user_id=peer_id)
+        return
     await self.client.send_reaction(chat_id, message_id)
 
   async def launch(self, manager: Launart) -> None:
