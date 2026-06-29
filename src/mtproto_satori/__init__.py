@@ -407,7 +407,6 @@ class MTProtoAdapter(Adapter):
       guild=guild,
       operator=operator,
     )
-    print(event)
     await self.queue.put(event)
 
   async def _on_callback_query(self, client: Client, callback: CallbackQuery) -> None:
