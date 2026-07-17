@@ -177,7 +177,7 @@ def parse_elements(me: TGUser, message: Message) -> list[Element]:
       quote_message = parse_elements(me, message.reply_to_message)
     quote_user = parse_message_sender(me, message.reply_to_message)
     quote_elements = list[str | Element]()
-    quote_elements.append(Author(quote_user.id, quote_user.name, quote_user.avatar))
+    quote_elements.append(Author(quote_user.id, quote_user.nick, quote_user.avatar))
     quote_elements.extend(quote_message)
     if (
       message.chat
