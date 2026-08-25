@@ -2,6 +2,7 @@ import base64
 import mimetypes
 import re
 from collections.abc import AsyncGenerator, Iterable
+from copy import copy
 from dataclasses import dataclass, field
 from io import BytesIO
 from itertools import chain
@@ -15,7 +16,7 @@ from graia.amnesia.builtins.aiohttp import AiohttpClientService
 from launart import Launart
 from PIL import Image
 from pyrogram.client import Client
-from pyrogram.enums import ParseMode
+from pyrogram.enums import MessageEntityType
 from pyrogram.types import (
   InlineKeyboardButton,
   InlineKeyboardMarkup,
@@ -25,11 +26,12 @@ from pyrogram.types import (
   InputMediaPhoto,
   InputMediaVideo,
   Message,
+  MessageEntity,
   Sticker,
   User,
 )
 from satori.model import MessageObject
-from satori.parser import Element, escape, parse
+from satori.parser import Element, parse
 from yarl import URL
 
 from mtproto_satori.message_receive import parse_message
@@ -170,16 +172,37 @@ InputMediaNotAnimation = InputMediaAudio | InputMediaDocument | InputMediaPhoto 
 @dataclass
 class MessagePack:
   content: str = ""
-  asset: list[Element] = field(default_factory=list)
+  utf16_len: int = 0
+  entities: list[MessageEntity] = field(default_factory=list)
+  assets: list[Element] = field(default_factory=list)
   reply: str = ""
   forward: str = ""
-  rows: list[list[InlineKeyboardButton]] = field(default_factory=list)
+  button_rows: list[list[InlineKeyboardButton]] = field(default_factory=list)
+
+  def push_text(self, text: str) -> None:
+    self.content += text
+    self.utf16_len += len(text.encode("utf-16-le")) // 2
+
+  @staticmethod
+  def merge(packs: Iterable[MessagePack]) -> MessagePack:
+    result = MessagePack()
+    for pack in packs:
+      for entity in pack.entities:
+        entity.offset += result.utf16_len
+        result.entities.append(entity)
+      result.push_text(pack.content)
+      result.assets.extend(pack.assets)
+      result.reply = result.reply or pack.reply
+      result.forward = result.forward or pack.forward
+      result.button_rows.extend(pack.button_rows)
+    return result
 
 
 class MessageEncoder:
   def __init__(self, emojis: dict[str, Sticker], users: dict[int | str, User]) -> None:
     self.current = MessagePack()
     self.packs = list[MessagePack]()
+    self.entities_stack = list[MessageEntity]()
     self.mode: Literal["figure", "default"] = "default"
     self.emojis = emojis
     self.users = users
@@ -197,68 +220,121 @@ class MessageEncoder:
         return full_name
     return None
 
+  def _push_entities_stack(self, entity: MessageEntity) -> None:
+    entity.offset = self.current.utf16_len
+    self.entities_stack.append(entity)
+
+  def _pop_entities_stack(self) -> None:
+    entity = self.entities_stack.pop()
+    entity.length = self.current.utf16_len - entity.offset
+    self.current.entities.append(entity)
+
   def visit(self, element: Element) -> None:
     if element.type == "text":
-      self.current.content += escape(element.attrs.get("text") or "")
+      self.current.push_text(element.attrs.get("text") or "")
     elif element.type == "br":
-      self.current.content += "\n"
+      self.current.push_text("\n")
     elif element.type == "p":
-      if not self.current.content.endswith("\n"):
-        self.current.content += "\n"
+      if self.current.content and not self.current.content.endswith("\n"):
+        self.current.push_text("\n")
       self.render(element.children)
-      if not self.current.content.endswith("\n"):
-        self.current.content += "\n"
+      if self.current.content and not self.current.content.endswith("\n"):
+        self.current.push_text("\n")
     elif element.type == "a":
       if href := element.attrs.get("href"):
-        attrs = f' href="{escape(href, True)}"'
-      else:
-        attrs = ""
-      self.current.content += f"<a{attrs}>"
-      self.render(element.children)
-      self.current.content += "</a>"
-    elif element.type in ("b", "strong", "i", "em", "u", "ins", "s", "del"):
-      self.current.content += f"<{element.type}>"
-      self.render(element.children)
-      self.current.content += f"</{element.type}>"
-    elif element.type == "spl":
-      self.current.content += "<spoiler>"
-      self.render(element.children)
-      self.current.content += "</spoiler>"
-    elif element.type == "code":
-      self.current.content += "<code>"
-      if "content" in element.attrs:
-        self.current.content += escape(element.attrs["content"])
+        self._push_entities_stack(
+          MessageEntity(type=MessageEntityType.TEXT_LINK, offset=0, length=0, url=href)
+        )
+        self.render(element.children)
+        self._pop_entities_stack()
       else:
         self.render(element.children)
-      self.current.content += "</code>"
+    elif element.type in ("b", "strong"):
+      self._push_entities_stack(MessageEntity(type=MessageEntityType.BOLD, offset=0, length=0))
+      self.render(element.children)
+      self._pop_entities_stack()
+    elif element.type in ("i", "em"):
+      self._push_entities_stack(MessageEntity(type=MessageEntityType.ITALIC, offset=0, length=0))
+      self.render(element.children)
+      self._pop_entities_stack()
+    elif element.type in ("u", "ins"):
+      self._push_entities_stack(
+        MessageEntity(type=MessageEntityType.UNDERLINE, offset=0, length=0)
+      )
+      self.render(element.children)
+      self._pop_entities_stack()
+    elif element.type in ("s", "del"):
+      self._push_entities_stack(
+        MessageEntity(type=MessageEntityType.STRIKETHROUGH, offset=0, length=0)
+      )
+      self.render(element.children)
+      self._pop_entities_stack()
+    elif element.type == "spl":
+      self._push_entities_stack(MessageEntity(type=MessageEntityType.SPOILER, offset=0, length=0))
+      self.render(element.children)
+      self._pop_entities_stack()
+    elif element.type == "code":
+      self._push_entities_stack(MessageEntity(type=MessageEntityType.CODE, offset=0, length=0))
+      if "content" in element.attrs:
+        self.current.push_text(element.attrs["content"])
+      else:
+        self.render(element.children)
+      self._pop_entities_stack()
     elif element.type in ("pre", "code-block"):
       if lang := element.attrs.get("lang"):
-        attrs = f' language="{escape(lang, True)}"'
+        self._push_entities_stack(
+          MessageEntity(type=MessageEntityType.PRE, offset=0, length=0, language=lang)
+        )
       else:
-        attrs = ""
-      self.current.content += f"<pre{attrs}>"
+        self._push_entities_stack(MessageEntity(type=MessageEntityType.PRE, offset=0, length=0))
       self.render(element.children)
-      self.current.content += "</pre>"
+      self._pop_entities_stack()
     elif element.type == "at":
       if id_or_username := element.attrs.get("id"):
         try:
           id = int(id_or_username)
         except ValueError:
-          # ID 代表用户名，始终获取用户 ID，用户名不存在就瞎填一个 ID
+          # ID 代表用户名，始终获取用户 ID，用户名不存在就不生成 TEXT_MENTION
           username = id_or_username.removeprefix("@")
-          id = user.id if (user := self.users.get(username)) else escape(f"@{username}", True)
-          display = element.attrs.get("name") or f"@{username}"
-          self.current.content += f'<a href="tg://user?id={id}">{escape(display)}</a>'
+          if user := self.users.get(username):
+            display = element.attrs.get("name") or f"@{username}"
+            self._push_entities_stack(
+              MessageEntity(type=MessageEntityType.TEXT_MENTION, offset=0, length=0, user=user)
+            )
+            self.current.push_text(display)
+            self._pop_entities_stack()
+          elif self.current.content and not self.current.content[-1].isspace():
+            self.current.push_text(f" @{username} ")
+          else:
+            self.current.push_text(f"@{username} ")
         else:
           # ID 代表用户 ID，使用 name 指定的名字，没有再获取
           display = element.attrs.get("name") or self._get_user_name(id) or "User"
-          self.current.content += f'<a href="tg://user?id={id}">{escape(display)}</a>'
+          self._push_entities_stack(
+            MessageEntity(
+              type=MessageEntityType.TEXT_MENTION,
+              offset=0,
+              length=0,
+              user=User(id=id),
+            )
+          )
+          self.current.push_text(display)
+          self._pop_entities_stack()
     elif element.type == "emoji":
       if id := element.attrs.get("id"):
         name = element.attrs.get("name") or self._get_emoji_name(id) or "😀"
-        self.current.content += f'<emoji id="{id}">{escape(name)}</emoji>'
+        self._push_entities_stack(
+          MessageEntity(
+            type=MessageEntityType.CUSTOM_EMOJI,
+            offset=0,
+            length=0,
+            custom_emoji_id=id,
+          )
+        )
+        self.current.push_text(name)
+        self._pop_entities_stack()
     elif element.type in ("img", "image", "audio", "video", "file"):
-      self.current.asset.append(element)
+      self.current.assets.append(element)
     elif element.type == "figure":
       self.flush()
       self.mode = "figure"
@@ -270,16 +346,18 @@ class MessageEncoder:
         self.flush()
         self.reply = element.attrs["id"]
       else:
-        self.current.content += "<blockquote>"
+        self._push_entities_stack(
+          MessageEntity(type=MessageEntityType.BLOCKQUOTE, offset=0, length=0)
+        )
         self.render(element.children)
-        self.current.content += "</blockquote>"
+        self._pop_entities_stack()
     elif element.type == "button":
-      if not self.current.rows:
-        self.current.rows.append([])
-      row = self.current.rows[-1]
+      if not self.current.button_rows:
+        self.current.button_rows.append([])
+      row = self.current.button_rows[-1]
       if len(row) >= 5:
         row = []
-        self.current.rows.append(row)
+        self.current.button_rows.append(row)
       label = element.dumps(True)
       if element.attrs["type"] == "link":
         button = InlineKeyboardButton(
@@ -298,13 +376,13 @@ class MessageEncoder:
         )
       row.append(button)
     elif element.type == "button-group":
-      self.current.rows.append([])
+      self.current.button_rows.append([])
       self.render(element.children)
-      self.current.rows.append([])
+      self.current.button_rows.append([])
     elif element.type == "message":
       if self.mode == "figure":
         self.render(element.children)
-        self.current.content += "\n"
+        self.current.push_text("\n")
       else:
         self.flush()
         if element.attrs.get("forward") and (forward_id := element.attrs.get("id")):
@@ -316,10 +394,15 @@ class MessageEncoder:
       self.render(element.children)
 
   def flush(self) -> None:
-    if not (self.current.content or self.current.asset or self.current.forward):
+    if not (self.current.content or self.current.assets or self.current.forward):
       return
-    if self.current.rows and not self.current.rows[-1]:
-      self.current.rows.pop()
+    for entity in self.entities_stack:
+      new_entity = copy(entity)
+      new_entity.length = self.current.utf16_len - new_entity.offset
+      self.current.entities.append(new_entity)
+      entity.offset = 0
+    if self.current.button_rows and not self.current.button_rows[-1]:
+      self.current.button_rows.pop()
     self.packs.append(self.current)
     self.current = MessagePack()
 
@@ -395,10 +478,10 @@ async def send_message(
   encoder.flush()
 
   for pack in encoder.packs:
-    if pack.asset:
+    if pack.assets:
       animations = list[InputMediaAnimation]()
       others = list[InputMediaNotAnimation]()
-      for element in pack.asset:
+      for element in pack.assets:
         src = element.attrs.get("src") or element.attrs["url"]
         title = element.attrs.get("title", "")
         timeout = float(element.attrs.get("timeout") or 0)
@@ -420,14 +503,14 @@ async def send_message(
           file = await get_media(client.name, src, title, timeout)
           others.append(InputMediaDocument(file))
 
-      has_buttons = pack.rows and pack.rows[0]
+      has_buttons = pack.button_rows and pack.button_rows[0]
       if not has_buttons:
         if others:
           others[0].caption = pack.content
-          others[0].parse_mode = cast(str, ParseMode.HTML)
+          others[0].caption_entities = pack.entities
         else:
           animations[0].caption = pack.content
-          animations[0].parse_mode = cast(str, ParseMode.HTML)
+          animations[0].caption_entities = pack.entities
 
       first: int | None = None
       reply = int(pack.reply) if pack.reply else cast(int, None)
@@ -452,7 +535,7 @@ async def send_message(
             channel_id,
             file.media,
             file.caption,
-            parse_mode=ParseMode.HTML,
+            caption_entities=cast(list[MessageEntity], file.caption_entities),
             has_spoiler=file.has_spoiler or False,
             reply_to_message_id=first or reply,
             message_thread_id=cast(int, thread_id),
@@ -466,9 +549,9 @@ async def send_message(
         result = await client.send_message(
           channel_id,
           pack.content,
-          ParseMode.HTML,
+          entities=pack.entities,
           reply_to_message_id=first,
-          reply_markup=InlineKeyboardMarkup(pack.rows),
+          reply_markup=InlineKeyboardMarkup(pack.button_rows),
           message_thread_id=thread_id,
         )
         yield (result, parse_message(me, result))
@@ -494,10 +577,12 @@ async def send_message(
       result = await client.send_message(
         channel_id,
         pack.content,
-        ParseMode.HTML,
+        entities=pack.entities,
         reply_to_message_id=int(pack.reply) if pack.reply else None,
         message_thread_id=thread_id,
-        reply_markup=InlineKeyboardMarkup(pack.rows) if pack.rows and pack.rows[0] else None,
+        reply_markup=InlineKeyboardMarkup(pack.button_rows)
+        if pack.button_rows and pack.button_rows[0]
+        else None,
       )
       yield (result, parse_message(me, result))
 
@@ -516,14 +601,14 @@ async def update_message(
   encoder.render(elements)
   encoder.flush()
 
-  buttons = list(chain.from_iterable(pack.rows for pack in encoder.packs))
+  pack = MessagePack.merge(encoder.packs)
   result = await client.edit_message_text(
     channel_id,
     message_id,
-    "".join(pack.content for pack in encoder.packs),
-    ParseMode.HTML,
-    reply_markup=InlineKeyboardMarkup(buttons)
-    if buttons and buttons[0]
+    pack.content,
+    entities=pack.entities,
+    reply_markup=InlineKeyboardMarkup(pack.button_rows)
+    if pack.button_rows and pack.button_rows[0]
     else cast(InlineKeyboardMarkup, None),
   )
   return (result, parse_message(me, result))
