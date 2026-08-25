@@ -60,6 +60,7 @@ class Status:
 
 
 def parse_text(text: str, entities: list[MessageEntity] | None) -> list[Element]:
+  utf16 = text.encode("utf-16-le")
   breakpoints = list[Breakpoint]()
   if entities:
     for entity in entities:
@@ -76,12 +77,15 @@ def parse_text(text: str, entities: list[MessageEntity] | None) -> list[Element]
         MessageEntityType.TEXT_MENTION,
         MessageEntityType.CUSTOM_EMOJI,
       ):
-        breakpoints.append(Breakpoint("start", entity.offset, entity))
-        breakpoints.append(Breakpoint("end", entity.offset + entity.length, entity))
-  for i, ch in enumerate(text):
-    if ch == "\n":
+        start = entity.offset
+        end = entity.offset + entity.length
+        breakpoints.append(Breakpoint("start", start * 2, entity))
+        breakpoints.append(Breakpoint("end", end * 2, entity))
+  for i in range(0, len(utf16), 2):
+    ch = (utf16[i + 1] << 8) | utf16[i]
+    if ch == 10:
       breakpoints.append(Breakpoint("start", i, None))
-      breakpoints.append(Breakpoint("end", i + 1, None))
+      breakpoints.append(Breakpoint("end", i + 2, None))
   breakpoints.sort()
 
   status = Status()
@@ -89,7 +93,7 @@ def parse_text(text: str, entities: list[MessageEntity] | None) -> list[Element]
   last_pos = 0
   for breakpoint in breakpoints:
     if breakpoint.pos > last_pos:
-      content = text[last_pos : breakpoint.pos]
+      content = utf16[last_pos : breakpoint.pos].decode("utf-16-le")
       element = Text(content)
       if status.bold:
         element = Bold(element)
@@ -146,8 +150,8 @@ def parse_text(text: str, entities: list[MessageEntity] | None) -> list[Element]
       elif breakpoint.entity.type == MessageEntityType.CUSTOM_EMOJI:
         status.emoji = breakpoint.entity.custom_emoji_id if breakpoint.mode == "start" else None
     last_pos = breakpoint.pos
-  if last_pos < len(text):
-    elements.append(Text(text[last_pos:]))
+  if last_pos < len(utf16):
+    elements.append(Text(utf16[last_pos:].decode("utf-16-le")))
   return elements
 
 
