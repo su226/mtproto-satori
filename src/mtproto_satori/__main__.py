@@ -28,6 +28,7 @@ def main() -> None:
       config.get("bot_token", ""),
       config.get("test_mode", False),
       config.get("proxy", None),
+      channel_reaction_event=config.get("channel_reaction_event", False),
       merge_media_groups_receive=merge_media_groups.get("receive", 0.1),
       ignore_automatic_forward_interval=config.get("ignore_automatic_forward_interval", 10),
     )

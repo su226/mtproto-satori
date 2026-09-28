@@ -48,6 +48,11 @@ ignore_automatic_forward_interval = 10
 # Enable this option to ignore channel message in the group, or set to 0 to disable.
 # Not works when bot is only in one side.
 
+channel_reaction_event = false
+# Optional, defaults to false
+# Enables performance-heavy channel reaction events. Since one Telegram reaction count event could become thousands of Satori events.
+# Also, some frameworks, like Entari, require user resource in reaction events. And this will cause errors in these frameworks.
+
 [proxy]
 # Optional
 

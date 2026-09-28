@@ -144,6 +144,7 @@ class MTProtoAdapter(Adapter):
     test_mode: bool = False,
     proxy: Proxy | None = None,
     *,
+    channel_reaction_event: bool = False,
     ignore_automatic_forward_interval: float = 10,
     merge_media_groups_receive: float = 0.1,
   ):
@@ -166,6 +167,7 @@ class MTProtoAdapter(Adapter):
     self.me: Me | None = None
     self.storage = SqliteStorage(self.session_name)
     self.is_connected = False
+    self.channel_reaction_event = channel_reaction_event
     self.merge_media_groups_receive = merge_media_groups_receive
     self.media_groups = dict[int, tuple[datetime, list[Message]]]()
     self.ignore_automatic_forward_interval = ignore_automatic_forward_interval
@@ -523,7 +525,7 @@ class MTProtoAdapter(Adapter):
     elif reaction.user:
       user = parse_user(self.me.tg.id, reaction.user)
     else:
-      user = None
+      raise ValueError("Both user and actor_chat are None in a reaction event.")
     for emoji in reaction.old_reaction:
       event = Event(
         EventType.REACTION_REMOVED,
@@ -1052,7 +1054,8 @@ class MTProtoAdapter(Adapter):
       self.client.on_chat_join_request()(self._on_chat_join_request)
       self.client.on_chat_member_updated()(self._on_chat_member_updated)
       self.client.on_message_reaction()(self._on_message_reaction)
-      self.client.on_message_reaction_count()(self._on_message_reaction_count)
+      if self.channel_reaction_event:
+        self.client.on_message_reaction_count()(self._on_message_reaction_count)
       self.client.on_connect()(self._on_connect)
       self.client.on_disconnect()(self._on_disconnect)
       self.client.on_raw_update(self._filter_me_update)(self._on_me_update)
