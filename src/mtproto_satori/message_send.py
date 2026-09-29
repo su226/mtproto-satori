@@ -456,7 +456,7 @@ def extract_users_without_id_or_name(element: Element | Iterable[Element]) -> se
 
 async def fetch_users(client: Client, users: set[int | str]) -> dict[int | str, User]:
   if users:
-    infos = cast(list[User], await client.get_users(users))
+    infos = await client.get_users(users)
     results: dict[int | str, User] = {info.id: info for info in infos}
     results.update((info.username, info) for info in infos if info.username)
     return results
@@ -554,6 +554,8 @@ async def send_message(
           reply_markup=InlineKeyboardMarkup(pack.button_rows),
           message_thread_id=thread_id,
         )
+        if not result:
+          raise ValueError("Sent message has no receipt.")
         yield (result, parse_message(me, result))
     elif pack.forward:
       split_id = pack.forward.split(":", 1)
@@ -584,6 +586,8 @@ async def send_message(
         if pack.button_rows and pack.button_rows[0]
         else None,
       )
+      if not result:
+        raise ValueError("Sent message has no receipt.")
       yield (result, parse_message(me, result))
 
 

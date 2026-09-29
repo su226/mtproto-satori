@@ -63,6 +63,8 @@ def parse_guild_channel(
 
 
 def parse_member(self_id: int, member: ChatMember) -> Member:
+  if not member.user:
+    raise ValueError("Member has no user.")
   return Member(
     parse_user(self_id, member.user),
     joined_at=member.joined_date,

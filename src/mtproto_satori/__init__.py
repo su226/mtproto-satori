@@ -4,12 +4,15 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Literal, NotRequired, TypedDict, cast
+from typing import Any
 
 from launart import Launart
 from launart.status import Phase
 from loguru import logger
+from pyrogram import filters
 from pyrogram.client import Client
+from pyrogram.connection import Proxy
+from pyrogram.connection.proxy import ProxyDict
 from pyrogram.enums import ChatMemberStatus, ChatType
 from pyrogram.file_id import FileId
 from pyrogram.raw.base import Chat as RawChat
@@ -30,6 +33,7 @@ from pyrogram.raw.types import (
 from pyrogram.raw.types.channels import (
   ChannelParticipantsNotModified,
 )
+from pyrogram.raw.types.community_full import CommunityFull
 from pyrogram.session.session import Session
 from pyrogram.types import (
   CallbackQuery,
@@ -119,14 +123,6 @@ from mtproto_satori.user import (
 )
 
 
-class Proxy(TypedDict):
-  scheme: Literal["socks5", "socks4", "http"]
-  hostname: str
-  port: int
-  username: NotRequired[str]
-  password: NotRequired[str]
-
-
 @dataclass
 class Me:
   tg: TGUser
@@ -142,7 +138,7 @@ class MTProtoAdapter(Adapter):
     password: str = "",
     bot_token: str = "",
     test_mode: bool = False,
-    proxy: Proxy | None = None,
+    proxy: str | ProxyDict | Proxy | None = None,
     *,
     channel_reaction_event: bool = False,
     ignore_automatic_forward_interval: float = 10,
@@ -219,6 +215,8 @@ class MTProtoAdapter(Adapter):
       elif (
         message.automatic_forward
         and isinstance(message.forward_origin, MessageOriginChannel)
+        and message.forward_origin.chat
+        and message.forward_origin.message_id
         and (message.forward_origin.chat.id, message.forward_origin.message_id)
         in self.ignore_automatic_forward_ids
       ):
@@ -370,7 +368,11 @@ class MTProtoAdapter(Adapter):
   async def _on_topic_edited(self, client: Client, message: Message) -> None:
     if not self.me:
       raise ValueError("Client is not fully initalized.")
-    if not message.forum_topic_edited or not message.message_thread_id:
+    if (
+      not message.forum_topic_edited
+      or not message.message_thread_id
+      or not message.forum_topic_edited.title
+    ):
       raise ValueError("Should be a forum_topic_edited service message.")
     if not message.chat or not message.chat.id:
       raise ValueError("Message has no chat.")
@@ -414,16 +416,20 @@ class MTProtoAdapter(Adapter):
   async def _on_callback_query(self, client: Client, callback: CallbackQuery) -> None:
     if not self.me:
       raise ValueError("Client is not fully initalized.")
+    if not callback.message:
+      raise ValueError("Unknown message triggered callback query.")
     message = parse_message(self.me.tg, callback.message)
+    if isinstance(callback.data, bytes):
+      data = callback.data.decode(errors="replace")
+    elif callback.data:
+      data = callback.data
+    else:
+      data = ""
     event = Event(
       EventType.INTERACTION_BUTTON,
       datetime.now(),
       self.me.satori,
-      button=ButtonInteraction(
-        callback.data.decode(errors="replace")
-        if isinstance(callback.data, bytes)
-        else callback.data
-      ),
+      button=ButtonInteraction(data),
       channel=message.channel,
       guild=message.guild,
       message=message,
@@ -466,6 +472,8 @@ class MTProtoAdapter(Adapter):
       )
       await self.queue.put(event)
     elif update.old_chat_member:
+      if not update.old_chat_member.user:
+        raise ValueError("Unknown member leaved chat.")
       guild = parse_guild(self.me.tg.id, update.chat)
       member = parse_member(self.me.tg.id, update.old_chat_member)
       operator = parse_user(self.me.tg.id, update.from_user)
@@ -491,6 +499,8 @@ class MTProtoAdapter(Adapter):
         )
       await self.queue.put(event)
     elif update.new_chat_member:
+      if not update.new_chat_member.user:
+        raise ValueError("Unknown member joined chat.")
       guild = parse_guild(self.me.tg.id, update.chat)
       member = parse_member(self.me.tg.id, update.new_chat_member)
       operator = parse_user(self.me.tg.id, update.from_user)
@@ -709,6 +719,8 @@ class MTProtoAdapter(Adapter):
     if chat_id > 0:
       raise ValueError("Direct messages have no guild")
     chat = await self.client.get_chat(chat_id)
+    if not chat:
+      raise ValueError("Telegram returned no chat.")
     return parse_guild(self.me.tg.id, chat)
 
   async def _route_guild_member_get(self, request: Request[GuildMemberGetParam]) -> Member:
@@ -754,15 +766,15 @@ class MTProtoAdapter(Adapter):
 
       return PageResult(
         [
-          parse_member(self.me.tg.id, ChatMember._parse(self.client, member, users, chats))
+          parse_member(self.me.tg.id, await ChatMember._parse(self.client, member, users, chats))
           for member in members
         ],
         str(offset + len(members)) if members else None,
       )
     elif isinstance(peer, InputPeerChat):
       r = await self.client.invoke(GetFullChat(chat_id=peer.chat_id))
-      if isinstance(r.full_chat, ChannelFull):
-        raise TypeError("Telegram returned ChannelFull even if peer is a group.")
+      if isinstance(r.full_chat, ChannelFull | CommunityFull):
+        raise TypeError("Telegram returned ChannelFull or CommunityFull even if peer is a group.")
       if isinstance(r.full_chat.participants, ChatParticipantsForbidden):
         raise ValueError("Get participants of this group is forbidden.")
 
@@ -772,7 +784,7 @@ class MTProtoAdapter(Adapter):
 
       return PageResult(
         [
-          parse_member(self.me.tg.id, ChatMember._parse(self.client, member, users, chats))
+          parse_member(self.me.tg.id, await ChatMember._parse(self.client, member, users, chats))
           for member in members
         ]
       )
@@ -913,6 +925,8 @@ class MTProtoAdapter(Adapter):
     if -1000000000000 < user_id < 0:
       raise ValueError("Only supergroups/channels can act like anonymous users, not basic groups.")
     chat = await self.client.get_chat(user_id)
+    if not chat:
+      raise ValueError("Telegram returned no chat.")
     return parse_sender_chat(self.me.tg.id, chat)
 
   async def _route_user_channel_create(self, request: Request[UserChannelCreateParam]) -> Channel:
@@ -1037,7 +1051,7 @@ class MTProtoAdapter(Adapter):
         self.session_name,
         self.api_id,
         self.api_hash,
-        proxy=cast(dict, self.proxy),
+        proxy=self.proxy,
         test_mode=self.test_mode,
         bot_token=self.bot_token,
         phone_number=self.phone,
@@ -1058,7 +1072,7 @@ class MTProtoAdapter(Adapter):
         self.client.on_message_reaction_count()(self._on_message_reaction_count)
       self.client.on_connect()(self._on_connect)
       self.client.on_disconnect()(self._on_disconnect)
-      self.client.on_raw_update(self._filter_me_update)(self._on_me_update)
+      self.client.on_raw_update(filters.create(self._filter_me_update))(self._on_me_update)
       await self.storage.open()
 
     async with self.stage("blocking"):
