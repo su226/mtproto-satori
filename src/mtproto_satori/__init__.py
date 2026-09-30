@@ -106,6 +106,8 @@ from mtproto_satori.storage import (
   serialize_reactions,
 )
 from mtproto_satori.user import (
+  ADMINISTRATOR_RIGHTS,
+  RESTRICTIONS,
   demote_chat_member,
   kick_chat_member,
   parse_guild,
@@ -119,6 +121,8 @@ from mtproto_satori.user import (
   resolve_channel_message_id,
   resolve_peer,
   restrict_chat_member,
+  set_administrator_privilege,
+  set_member_permission,
   unrestrict_chat_member,
 )
 
@@ -861,8 +865,12 @@ class MTProtoAdapter(Adapter):
         await kick_chat_member(self.client, chat_id, user_id)
     elif role_id == ChatMemberStatus.BANNED.name.lower():
       await self.client.ban_chat_member(chat_id, user_id)
+    elif role_id in ADMINISTRATOR_RIGHTS:
+      await set_administrator_privilege(self.client, chat_id, user_id, role_id, True)
+    elif role_id in RESTRICTIONS:
+      await set_member_permission(self.client, chat_id, user_id, role_id, True)
     else:
-      raise ValueError("Invalid role.")
+      raise KeyError("Invalid role.")
 
   async def _route_guild_member_role_unset(self, request: Request[GuildMemberRoleParam]) -> None:
     if not self.client or not self.me:
@@ -885,8 +893,12 @@ class MTProtoAdapter(Adapter):
       raise ValueError('"left" role cannot be unset.')
     elif role_id == ChatMemberStatus.BANNED.name.lower():
       await self.client.unban_chat_member(chat_id, user_id)
+    elif role_id in ADMINISTRATOR_RIGHTS:
+      await set_administrator_privilege(self.client, chat_id, user_id, role_id, False)
+    elif role_id in RESTRICTIONS:
+      await set_member_permission(self.client, chat_id, user_id, role_id, False)
     else:
-      raise ValueError("Invalid role.")
+      raise KeyError("Invalid role.")
 
   async def _route_guild_role_list(self, request: Request[GuildXXXListParam]) -> PageResult[Role]:
     if not self.client or not self.me:
@@ -901,6 +913,8 @@ class MTProtoAdapter(Adapter):
           Role(ChatMemberStatus.RESTRICTED.name.lower()),
           Role(ChatMemberStatus.LEFT.name.lower()),
           Role(ChatMemberStatus.BANNED.name.lower()),
+          *(Role(right) for right in ADMINISTRATOR_RIGHTS),
+          *(Role(restriction) for restriction in RESTRICTIONS),
         ]
       )
     if chat_id < 0:

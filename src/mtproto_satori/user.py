@@ -65,11 +65,75 @@ def parse_guild_channel(
 def parse_member(self_id: int, member: ChatMember) -> Member:
   if not member.user:
     raise ValueError("Member has no user.")
-  return Member(
-    parse_user(self_id, member.user),
-    joined_at=member.joined_date,
-    roles=[Role(id=member.status.name.lower())],
-  )
+  roles = [Role(member.status.name.lower())]
+  if not member.permissions or member.permissions.can_send_messages:
+    roles.append(Role("can_send_messages"))
+  if not member.permissions or member.permissions.can_send_audios:
+    roles.append(Role("can_send_audios"))
+  if not member.permissions or member.permissions.can_send_documents:
+    roles.append(Role("can_send_documents"))
+  if not member.permissions or member.permissions.can_send_photos:
+    roles.append(Role("can_send_photos"))
+  if not member.permissions or member.permissions.can_send_videos:
+    roles.append(Role("can_send_videos"))
+  if not member.permissions or member.permissions.can_send_video_notes:
+    roles.append(Role("can_send_video_notes"))
+  if not member.permissions or member.permissions.can_send_voice_notes:
+    roles.append(Role("can_send_voice_notes"))
+  if not member.permissions or member.permissions.can_send_polls:
+    roles.append(Role("can_send_polls"))
+  if not member.permissions or member.permissions.can_send_other_messages:
+    roles.append(Role("can_send_other_messages"))
+  if not member.permissions or member.permissions.can_add_web_page_previews:
+    roles.append(Role("can_add_web_page_previews"))
+  if not member.permissions or member.permissions.can_react_to_messages:
+    roles.append(Role("can_react_to_messages"))
+  if not member.permissions or member.permissions.can_edit_tag:
+    roles.append(Role("can_edit_tag"))
+  if not member.permissions or member.permissions.can_change_info:
+    roles.append(Role("can_change_info"))
+  if not member.permissions or member.permissions.can_invite_users:
+    roles.append(Role("can_invite_users"))
+  if not member.permissions or member.permissions.can_pin_messages:
+    roles.append(Role("can_pin_messages"))
+  if not member.permissions or member.permissions.can_manage_topics:
+    roles.append(Role("can_manage_topics"))
+  if member.privileges:
+    if member.privileges.is_anonymous:
+      roles.append(Role("is_anonymous"))
+    if member.privileges.can_delete_messages:
+      roles.append(Role("can_delete_messages"))
+    if member.privileges.can_manage_video_chats:
+      roles.append(Role("can_manage_video_chats"))
+    if member.privileges.can_restrict_members:
+      roles.append(Role("can_restrict_members"))
+    if member.privileges.can_promote_members:
+      roles.append(Role("can_promote_members"))
+    if member.privileges.can_change_info:
+      roles.append(Role("can_change_info"))
+    if member.privileges.can_invite_users:
+      roles.append(Role("can_invite_users"))
+    if member.privileges.can_post_stories:
+      roles.append(Role("can_post_stories"))
+    if member.privileges.can_edit_stories:
+      roles.append(Role("can_edit_stories"))
+    if member.privileges.can_delete_stories:
+      roles.append(Role("can_delete_stories"))
+    if member.privileges.can_post_messages:
+      roles.append(Role("can_post_messages"))
+    if member.privileges.can_edit_messages:
+      roles.append(Role("can_edit_messages"))
+    if member.privileges.can_pin_messages:
+      roles.append(Role("can_pin_messages"))
+    if member.privileges.can_manage_topics:
+      roles.append(Role("can_manage_topics"))
+    if member.privileges.can_manage_direct_messages:
+      roles.append(Role("can_manage_direct_messages"))
+    if member.privileges.can_manage_tags:
+      roles.append(Role("can_manage_tags"))
+    if member.privileges.can_send_welcome_messages:
+      roles.append(Role("can_send_welcome_messages"))
+  return Member(parse_user(self_id, member.user), joined_at=member.joined_date, roles=roles)
 
 
 def parse_reaction(reaction: Reaction) -> EmojiObject:
@@ -178,44 +242,103 @@ async def unrestrict_chat_member(client: Client, chat_id: int, user_id: int) -> 
 async def promote_chat_member(client: Client, chat_id: int, user_id: int) -> None:
   # For basic groups, editChatAdmin should be used.
   # But bots cannot use that method.
-  permissions = ChatAdministratorRights(
-    is_anonymous=False,
-    can_manage_chat=True,
-    can_delete_messages=True,
-    can_manage_video_chats=True,
-    can_restrict_members=True,
-    can_promote_members=False,
-    can_change_info=True,
-    can_invite_users=True,
-    can_post_stories=True,
-    can_edit_stories=True,
-    can_delete_stories=True,
-    can_post_messages=True,
-    can_edit_messages=True,
-    can_pin_messages=True,
-    can_manage_topics=True,
-    can_manage_direct_messages=True,
-  )
-  await client.promote_chat_member(chat_id, user_id, permissions)
+  await client.promote_chat_member(chat_id, user_id)
 
 
 async def demote_chat_member(client: Client, chat_id: int, user_id: int) -> None:
-  permissions = ChatAdministratorRights(
-    is_anonymous=False,
-    can_manage_chat=False,
-    can_delete_messages=False,
-    can_manage_video_chats=False,
-    can_restrict_members=False,
-    can_promote_members=False,
-    can_change_info=False,
-    can_invite_users=False,
-    can_post_stories=False,
-    can_edit_stories=False,
-    can_delete_stories=False,
-    can_post_messages=False,
-    can_edit_messages=False,
-    can_pin_messages=False,
-    can_manage_topics=False,
-    can_manage_direct_messages=False,
+  privileges = ChatAdministratorRights(can_manage_chat=False)
+  await client.promote_chat_member(chat_id, user_id, privileges)
+
+
+ADMINISTRATOR_RIGHTS = {
+  "is_anonymous",
+  "can_delete_messages",
+  "can_manage_video_chats",
+  "can_restrict_members",
+  "can_promote_members",
+  "can_change_info",
+  "can_invite_users",
+  "can_post_stories",
+  "can_edit_stories",
+  "can_delete_stories",
+  "can_post_messages",
+  "can_edit_messages",
+  "can_pin_messages",
+  "can_manage_topics",
+  "can_manage_direct_messages",
+  "can_manage_tags",
+  "can_send_welcome_messages",
+}
+
+
+async def set_administrator_privilege(
+  client: Client,
+  chat_id: int,
+  user_id: int,
+  privilege: str,
+  toggle: bool,
+) -> None:
+  if chat_id >= -1000000000000:
+    raise ValueError("Fine-grained permissions only available at supergroups or channels.")
+  if privilege not in ADMINISTRATOR_RIGHTS:
+    raise KeyError("Invalid permission.")
+  member = await client.get_chat_member(chat_id, user_id)
+  privileges = member.privileges or ChatAdministratorRights(can_manage_chat=False)
+  setattr(privileges, privilege, toggle)
+  if toggle:
+    privileges.can_manage_chat = True
+  await client.promote_chat_member(chat_id, user_id, privileges)
+
+
+RESTRICTIONS = {
+  "can_send_messages",
+  "can_send_audios",
+  "can_send_documents",
+  "can_send_photos",
+  "can_send_videos",
+  "can_send_video_notes",
+  "can_send_voice_notes",
+  "can_send_polls",
+  "can_send_other_messages",
+  "can_add_web_page_previews",
+  "can_react_to_messages",
+  "can_edit_tag",
+  "can_change_info",
+  "can_invite_users",
+  "can_pin_messages",
+  "can_manage_topics",
+}
+
+
+async def set_member_permission(
+  client: Client,
+  chat_id: int,
+  user_id: int,
+  permission: str,
+  toggle: bool,
+) -> None:
+  if chat_id >= -1000000000000:
+    raise ValueError("Fine-grained permissions only available at supergroups or channels.")
+  if permission not in RESTRICTIONS:
+    raise KeyError("Invalid permission.")
+  member = await client.get_chat_member(chat_id, user_id)
+  permissions = member.permissions or ChatPermissions(
+    can_send_messages=True,
+    can_send_audios=True,
+    can_send_documents=True,
+    can_send_photos=True,
+    can_send_videos=True,
+    can_send_video_notes=True,
+    can_send_voice_notes=True,
+    can_send_polls=True,
+    can_send_other_messages=True,
+    can_add_web_page_previews=True,
+    can_react_to_messages=True,
+    can_edit_tag=True,
+    can_change_info=True,
+    can_invite_users=True,
+    can_pin_messages=True,
+    can_manage_topics=True,
   )
-  await client.promote_chat_member(chat_id, user_id, permissions)
+  setattr(permissions, permission, toggle)
+  await client.restrict_chat_member(chat_id, user_id, permissions)
