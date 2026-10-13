@@ -12,6 +12,7 @@ from typing import Any, BinaryIO, Literal, cast
 
 import aiohttp
 import puremagic
+from creart import it
 from graia.amnesia.builtins.aiohttp import AiohttpClientService
 from launart import Launart
 from PIL import Image
@@ -32,27 +33,19 @@ from pyrogram.types import (
 )
 from satori.model import MessageObject
 from satori.parser import Element, parse
+from satori.server import Server
 from yarl import URL
 
 from mtproto_satori.message_receive import parse_message
 
 BASE64_HEADER = re.compile(r"^data:([\w/.+-]+);base64,")
-_aiohttp: aiohttp.ClientSession | None = None
 
 
 def get_aiohttp() -> aiohttp.ClientSession:
-  try:
-    manager = Launart.current()
-    client = manager.get_component(AiohttpClientService).session
-  except LookupError, ValueError:
-    global _aiohttp
-    if not _aiohttp:
-      _aiohttp = aiohttp.ClientSession()
-    client = _aiohttp
-  return client
+  return it(Launart).get_component(AiohttpClientService).session
 
 
-async def get_media(session_name: str, url: str, name: str, timeout: float) -> BinaryIO:
+async def get_media(session_name: str, url: str, name: str, timeout: float) -> BinaryIO | str:
   if match := BASE64_HEADER.match(url):
     data = base64.b64decode(BASE64_HEADER.sub("", url))
     if not name:
@@ -68,13 +61,23 @@ async def get_media(session_name: str, url: str, name: str, timeout: float) -> B
     file = path.open("rb")
     if name:
       cast(Any, file.raw).name = name
+  elif url.startswith("internal:"):
+    parts = url[9:].split("/")
+    if parts[2] == "_tmp":
+      server = it(Launart).get_component(Server)
+      path = Path(server._tempdir.name) / parts[3]
+      file = path.open("rb")
+      if name:
+        cast(Any, file.raw).name = name
+    else:
+      file = parts[2]
   else:
     parsed = URL(url)
     client = get_aiohttp()
     dir = Path(f"files_{session_name}")
     dir.mkdir(exist_ok=True, parents=True)
     file = TemporaryFile(dir=dir)
-    async with client.get(parsed) as response:
+    async with client.get(parsed, timeout=aiohttp.ClientTimeout(timeout)) as response:
       async for chunk in response.content.iter_any():
         file.write(chunk)
     if not name:
@@ -92,7 +95,7 @@ async def get_image(
   url: str,
   name: str,
   timeout: float,
-) -> tuple[BinaryIO, str]:
+) -> tuple[BinaryIO | str, str]:
   dir = Path(f"files_{session_name}")
   dir.mkdir(exist_ok=True, parents=True)
   if match := BASE64_HEADER.match(url):
@@ -139,10 +142,38 @@ async def get_image(
     if not name.endswith(ext):
       name += ext
     cast(Any, file.raw).name = name
+  elif url.startswith("internal:"):
+    parts = url[9:].split("/")
+    if parts[2] == "_tmp":
+      server = it(Launart).get_component(Server)
+      path = Path(server._tempdir.name) / parts[3]
+      if magic := puremagic.magic_file(path):
+        magic = max(magic)
+        mime = magic.mime_type
+        ext = magic.extension
+      else:
+        mime = "application/octet-stream"
+        ext = ".bin"
+      if image_mime_valid(mime):
+        file = path.open("rb")
+      else:
+        file = TemporaryFile(dir=dir)
+        im = Image.open(path)
+        im.save(file, "PNG")
+        mime = "image/png"
+        ext = ".png"
+      if not name:
+        name = path.name
+      if not name.endswith(ext):
+        name += ext
+      cast(Any, file.raw).name = name
+    else:
+      file = parts[2]
+      mime = "application/octet-stream"  # How to get MIME type of file on Telegram server?
   else:
     parsed = URL(url)
     file = TemporaryFile(dir=dir)
-    async with get_aiohttp().get(parsed) as response:
+    async with get_aiohttp().get(parsed, timeout=aiohttp.ClientTimeout(timeout)) as response:
       async for chunk in response.content.iter_any():
         file.write(chunk)
     file.seek(0)
@@ -416,10 +447,7 @@ def extract_emojis_without_name(element: Element | Iterable[Element]) -> set[str
     if element.type == "emoji":
       emoji_id = element.attrs.get("id")
       if emoji_id and not element.attrs.get("name"):
-        try:
-          return {emoji_id}
-        except ValueError:
-          pass
+        return {emoji_id}
       return set()
     element = element.children
   return set(chain.from_iterable(extract_emojis_without_name(element) for element in element))
