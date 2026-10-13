@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from creart import it
 from launart import Launart
 from launart.status import Phase
 from loguru import logger
@@ -147,6 +148,7 @@ class MTProtoAdapter(Adapter):
     channel_reaction_event: bool = False,
     ignore_automatic_forward_interval: float = 10,
     merge_media_groups_receive: float = 0.1,
+    exit_when_start_failed: bool = True,
   ):
     super().__init__()
     self.queue = asyncio.Queue[Event]()
@@ -172,6 +174,7 @@ class MTProtoAdapter(Adapter):
     self.media_groups = dict[int, tuple[datetime, list[Message]]]()
     self.ignore_automatic_forward_interval = ignore_automatic_forward_interval
     self.ignore_automatic_forward_ids = dict[tuple[int, int], asyncio.Task]()
+    self.exit_when_start_failed = exit_when_start_failed
     self.route(Api.CHANNEL_GET)(self._route_channel_get)
     self.route(Api.CHANNEL_CREATE)(self._route_channel_create)
     self.route(Api.CHANNEL_UPDATE)(self._route_channel_update)
@@ -1090,22 +1093,29 @@ class MTProtoAdapter(Adapter):
       await self.storage.open()
 
     async with self.stage("blocking"):
-      await self.client.start()
-      me = await self._update_me()
-      logger.debug(f"Logged in as {me.tg.full_name} ({me.tg.id}).")
-      await self.queue.put(
-        Event(
-          EventType.LOGIN_ADDED,
-          datetime.now(),
-          me.satori,
+      try:
+        await self.client.start()
+      except Exception:
+        if self.exit_when_start_failed:
+          it(Launart).status.exiting = True
+      else:
+        assert self.client.me, "Client.me should be set after start."
+        me = self._set_me(self.client.me)
+        logger.debug(f"Logged in as {me.tg.full_name} ({me.tg.id}).")
+        await self.queue.put(
+          Event(
+            EventType.LOGIN_ADDED,
+            datetime.now(),
+            me.satori,
+          )
         )
-      )
-      await manager.status.wait_for_sigexit()
+        await manager.status.wait_for_sigexit()
 
     async with self.stage("cleanup"):
       await self.storage.close()
       self.me = None
-      await self.client.stop()
+      if self.client.is_initialized:
+        await self.client.stop()
       self.client = None
 
   def get_platform(self) -> str:
@@ -1126,8 +1136,11 @@ class MTProtoAdapter(Adapter):
     return StreamingResponse(self.client.get_file(file_id))
 
   async def _update_me(self) -> Me:
-    assert self.client
-    user = await self.client.get_me()
+    if not self.client:
+      raise ValueError("Client not started")
+    return self._set_me(await self.client.get_me())
+
+  def _set_me(self, user: TGUser) -> Me:
     self.me = Me(user, Login(adapter=ADAPTER, platform=PLATFORM, user=parse_user(user.id, user)))
     return self.me
 
