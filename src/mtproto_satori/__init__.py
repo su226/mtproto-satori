@@ -90,6 +90,7 @@ from starlette.responses import Response, StreamingResponse
 
 from mtproto_satori.const import ADAPTER, PLATFORM
 from mtproto_satori.message_receive import (
+  attach_reply,
   filter_chat_edited,
   filter_normal_message,
   filter_topic_created,
@@ -148,6 +149,8 @@ class MTProtoAdapter(Adapter):
     channel_reaction_event: bool = False,
     ignore_automatic_forward_interval: float = 10,
     merge_media_groups_receive: float = 0.1,
+    merge_media_groups_get: bool = False,
+    merge_media_groups_delete: bool = False,
     exit_when_start_failed: bool = True,
   ):
     super().__init__()
@@ -172,6 +175,8 @@ class MTProtoAdapter(Adapter):
     self.channel_reaction_event = channel_reaction_event
     self.merge_media_groups_receive = merge_media_groups_receive
     self.media_groups = dict[int, tuple[datetime, list[Message]]]()
+    self.merge_media_groups_get = merge_media_groups_get
+    self.merge_media_groups_delete = merge_media_groups_delete
     self.ignore_automatic_forward_interval = ignore_automatic_forward_interval
     self.ignore_automatic_forward_ids = dict[tuple[int, int], asyncio.Task]()
     self.exit_when_start_failed = exit_when_start_failed
@@ -254,7 +259,9 @@ class MTProtoAdapter(Adapter):
         StoredMessage.from_message(self.me.tg.id, message, parsed.content)
       )
       for add_message in messages[1:]:
-        add_content = "".join(str(element) for element in parse_elements(self.me.tg, add_message))
+        add_content = "".join(
+          str(element) for element in parse_elements(self.me.tg, add_message, quote=False)
+        )
         parsed.content += add_content
         await self.storage.put_message(
           StoredMessage.from_message(self.me.tg.id, add_message, add_content)
@@ -979,6 +986,29 @@ class MTProtoAdapter(Adapter):
       request.params["channel_id"],
       request.params["message_id"],
     )
+    if self.merge_media_groups_get:
+      messages = await self.client.get_messages(
+        channel_id,
+        list(range(message_id - 9, message_id + 10)),
+        replies=0,
+      )
+      current_message = next((message for message in messages if message.id == message_id), None)
+      if not current_message:
+        raise ValueError("Message not exist.")
+      if current_message.media_group_id is None:
+        await attach_reply(self.client, current_message)
+        return parse_message(self.me.tg, current_message)
+      messages = [
+        message for message in messages if message.media_group_id == current_message.media_group_id
+      ]
+      await attach_reply(self.client, messages[0])
+      parsed = parse_message(self.me.tg, messages[0])
+      for add_message in messages[1:]:
+        add_content = "".join(
+          str(element) for element in parse_elements(self.me.tg, add_message, quote=False)
+        )
+        parsed.content += add_content
+      return parsed
     message = await self.client.get_messages(channel_id, message_id)
     if not message:
       raise ValueError("Message not exist.")
@@ -992,6 +1022,27 @@ class MTProtoAdapter(Adapter):
       request.params["channel_id"],
       request.params["message_id"],
     )
+    if self.merge_media_groups_delete:
+      messages = await self.client.get_messages(
+        channel_id,
+        list(range(message_id - 9, message_id + 10)),
+        replies=0,
+      )
+      current_message = next((message for message in messages if message.id == message_id), None)
+      if not current_message:
+        raise ValueError("Message not exist.")
+      if current_message.media_group_id is None:
+        await self.client.delete_messages(channel_id, current_message.id)
+      else:
+        await self.client.delete_messages(
+          channel_id,
+          [
+            message.id
+            for message in messages
+            if message.media_group_id == current_message.media_group_id
+          ],
+        )
+      return
     count = await self.client.delete_messages(channel_id, message_id)
     if not count:
       raise ValueError("Message not exist.")

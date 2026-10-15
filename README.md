@@ -81,6 +81,14 @@ receive = 0.1
 # Higher value means higher latency when receiving media groups.
 # If media groups are incomplete, try increase it.
 # Set to 0 to disable.
+
+get = false
+# Optional, defaults to false.
+# When call message.get, get [message_id - 9, message_id + 9] to retreive all medias at once.
+
+delete = false
+# Optional, defaults to false.
+# When call message.delete, get media group first then delete.
 ```
 
 Install dependencies with `uv sync`.

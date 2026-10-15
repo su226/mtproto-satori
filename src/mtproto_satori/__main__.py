@@ -30,6 +30,8 @@ def main() -> None:
       config.get("proxy", None),
       channel_reaction_event=config.get("channel_reaction_event", False),
       merge_media_groups_receive=merge_media_groups.get("receive", 0.1),
+      merge_media_groups_get=merge_media_groups.get("get", False),
+      merge_media_groups_delete=merge_media_groups.get("delete", False),
       ignore_automatic_forward_interval=config.get("ignore_automatic_forward_interval", 10),
     )
   )

@@ -169,11 +169,13 @@ def parse_message_sender(me: TGUser, message: Message) -> User:
   raise ValueError("Message has no sender.")
 
 
-def parse_elements(me: TGUser, message: Message) -> list[Element]:
+def parse_elements(me: TGUser, message: Message, quote: bool = True) -> list[Element]:
   elements = list[Element]()
 
-  if message.reply_to_message and not (
-    message.topic_message and message.reply_to_message.forum_topic_created
+  if (
+    quote
+    and message.reply_to_message
+    and not (message.topic_message and message.reply_to_message.forum_topic_created)
   ):
     if message.quote and message.quote.text:
       quote_message = parse_text(message.quote.text, message.quote.entities)
@@ -309,3 +311,13 @@ def is_my_command(message: Message, user: TGUser) -> bool:
     if (username.editable or username.active) and username.username == bot:
       return True
   return False
+
+
+async def attach_reply(client: Client, message: Message) -> None:
+  if message.chat is None or message.reply_to_message_id is None:
+    return
+  message.reply_to_message = await client.get_messages(
+    message.chat.id,
+    message.reply_to_message_id,
+    replies=0,
+  )
